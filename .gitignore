@@ -8,3 +8,4 @@ build/
 .pytest_cache/
 .tox/
 .venv/
+pipeleyen/pipeleyen_version.py
