@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeleyen</title>
+    <link rel="stylesheet" href="/static/styleMain.css">
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+</head>
+<body>
+
+<!-- Container Picker -->
+<div id="containerPicker">
+    <h1>PIPELEYEN</h1>
+    <p class="subtitle">Pipeline Verification GUI</p>
+    <div id="listContainers">
+        <p style="color: var(--text-muted); text-align: center;">
+            Loading containers...
+        </p>
+    </div>
+</div>
+
+<!-- Main Layout -->
+<div id="mainLayout">
+    <!-- Toolbar -->
+    <div id="toolbar">
+        <span class="toolbar-title">PIPELEYEN</span>
+        <button class="btn btn-primary" id="btnRunSelected"
+                title="Run checked scenes">Run Selected</button>
+        <button class="btn" id="btnRunAll"
+                title="Run all scenes">Run All</button>
+        <button class="btn" id="btnVerify"
+                title="Verify outputs only">Verify</button>
+        <button class="btn" id="btnVsCode"
+                title="Open in VS Code">VS Code</button>
+        <button class="btn" id="btnDisconnect"
+                title="Disconnect from container">Disconnect</button>
+    </div>
+
+    <!-- Left Panel: Scenes -->
+    <div id="panelScenes">
+        <div class="panel-header">
+            <span>Scenes</span>
+            <button class="btn-icon" id="btnNewScene"
+                    title="Create new scene">+</button>
+        </div>
+        <div id="listScenes"></div>
+    </div>
+
+    <!-- Right Panels -->
+    <div id="panelRight">
+        <!-- Figure Viewer -->
+        <div id="panelFigure">
+            <div class="panel-header">
+                <label>Figure</label>
+                <select id="selectFigure">
+                    <option value="">Select a figure...</option>
+                </select>
+                <button class="btn-icon" id="btnRefreshFigure"
+                        title="Refresh figure">&#x21bb;</button>
+            </div>
+            <div id="figureViewport">
+                <span class="placeholder">
+                    Select a scene to view its figures
+                </span>
+            </div>
+        </div>
+
+        <!-- Terminal -->
+        <div id="panelTerminal">
+            <div id="terminalTabs">
+                <button id="terminalTabAdd" title="New terminal">+</button>
+            </div>
+            <div id="terminalContainer"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene Editor Modal -->
+<div class="modal-overlay" id="modalSceneEditor">
+    <div class="modal">
+        <h2 id="modalTitle">New Scene</h2>
+        <div class="form-group">
+            <label>Scene Name</label>
+            <input type="text" id="inputSceneName"
+                   placeholder="e.g. Maximum Likelihood Estimation">
+        </div>
+        <div class="form-group">
+            <label>Working Directory</label>
+            <input type="text" id="inputSceneDirectory"
+                   placeholder="e.g. XUV/Distributions/Ribas/LXUV">
+        </div>
+        <div class="form-group">
+            <div class="toggle-row">
+                <input type="checkbox" id="inputPlotOnly" checked>
+                <label style="margin-bottom:0; text-transform:none;">
+                    Plot only (skip setup commands)
+                </label>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Setup Commands (one per line)</label>
+            <textarea id="inputSetupCommands"
+                      placeholder="Heavy computation commands..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Commands (one per line)</label>
+            <textarea id="inputCommands"
+                      placeholder="Plotting / analysis commands..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Output Files (one per line)</label>
+            <textarea id="inputOutputFiles"
+                      placeholder="Expected output file paths..."></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="btn" id="btnModalCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnModalSave">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Context Menu -->
+<div class="context-menu" id="contextMenu">
+    <div class="context-menu-item" data-action="edit">Edit Scene</div>
+    <div class="context-menu-item" data-action="runFrom">
+        Run From Here</div>
+    <div class="context-menu-item" data-action="insertBefore">
+        Insert Scene Before</div>
+    <div class="context-menu-item" data-action="insertAfter">
+        Insert Scene After</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item danger" data-action="delete">
+        Delete Scene</div>
+</div>
+
+<!-- Toast Container -->
+<div id="toastContainer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="/static/scriptApplication.js"></script>
+<script src="/static/scriptFigureViewer.js"></script>
+<script src="/static/scriptTerminal.js"></script>
+<script src="/static/scriptSceneEditor.js"></script>
+</body>
+</html>
