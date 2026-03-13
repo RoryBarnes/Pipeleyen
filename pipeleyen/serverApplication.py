@@ -59,7 +59,15 @@ def fappCreateApplication():
     app = FastAPI(title="Pipeleyen")
     connectionDocker = DockerConnection()
     dictScriptCache = {}
+    dictScriptPathCache = {}
     dictTerminalSessions = {}
+
+    def fsGetScriptPath(sContainerId):
+        """Return the cached script.json path for a container."""
+        sPath = dictScriptPathCache.get(sContainerId)
+        if not sPath:
+            raise HTTPException(404, "Not connected to container")
+        return sPath
 
     # --- Container routes ---
 
@@ -73,15 +81,35 @@ def fappCreateApplication():
                 detail=f"Docker error: {error}",
             )
 
-    @app.post("/api/connect/{sContainerId}")
-    async def fnConnectToContainer(sContainerId: str):
+    @app.get("/api/scripts/{sContainerId}")
+    async def fnFindScripts(sContainerId: str):
+        """Find all script.json files in the container."""
         try:
-            dictScript = sceneManager.fdictLoadScriptFromContainer(
+            return sceneManager.flistFindScriptsInContainer(
                 connectionDocker, sContainerId
             )
+        except Exception as error:
+            raise HTTPException(500, f"Search failed: {error}")
+
+    @app.post("/api/connect/{sContainerId}")
+    async def fnConnectToContainer(
+        sContainerId: str, sScriptPath: Optional[str] = None
+    ):
+        try:
+            dictScript = sceneManager.fdictLoadScriptFromContainer(
+                connectionDocker, sContainerId, sScriptPath
+            )
             dictScriptCache[sContainerId] = dictScript
+            sResolvedPath = sScriptPath
+            if sResolvedPath is None:
+                listPaths = sceneManager.flistFindScriptsInContainer(
+                    connectionDocker, sContainerId
+                )
+                sResolvedPath = listPaths[0] if listPaths else None
+            dictScriptPathCache[sContainerId] = sResolvedPath
             return {
                 "sContainerId": sContainerId,
+                "sScriptPath": sResolvedPath,
                 "dictScript": dictScript,
             }
         except Exception as error:
@@ -126,7 +154,8 @@ def fappCreateApplication():
         )
         dictScript["listScenes"].append(dictScene)
         sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictScript
+            connectionDocker, sContainerId, dictScript,
+            fsGetScriptPath(sContainerId),
         )
         return {
             "iIndex": len(dictScript["listScenes"]) - 1,
@@ -152,7 +181,8 @@ def fappCreateApplication():
         )
         sceneManager.fnInsertScene(dictScript, iPosition, dictScene)
         sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictScript
+            connectionDocker, sContainerId, dictScript,
+            fsGetScriptPath(sContainerId),
         )
         return {"iIndex": iPosition, "dictScene": dictScene}
 
@@ -177,7 +207,8 @@ def fappCreateApplication():
         except IndexError as error:
             raise HTTPException(404, str(error))
         sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictScript
+            connectionDocker, sContainerId, dictScript,
+            fsGetScriptPath(sContainerId),
         )
         return dictScript["listScenes"][iSceneIndex]
 
@@ -191,7 +222,8 @@ def fappCreateApplication():
         except IndexError as error:
             raise HTTPException(404, str(error))
         sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictScript
+            connectionDocker, sContainerId, dictScript,
+            fsGetScriptPath(sContainerId),
         )
         return {"bSuccess": True}
 
@@ -209,7 +241,8 @@ def fappCreateApplication():
         except IndexError as error:
             raise HTTPException(400, str(error))
         sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictScript
+            connectionDocker, sContainerId, dictScript,
+            fsGetScriptPath(sContainerId),
         )
         return sceneManager.flistExtractSceneNames(dictScript)
 
@@ -284,6 +317,7 @@ def fappCreateApplication():
                         sContainerId,
                         listIndices,
                         dictScript,
+                        dictScriptPathCache.get(sContainerId),
                         fnCallback,
                     )
         except WebSocketDisconnect:

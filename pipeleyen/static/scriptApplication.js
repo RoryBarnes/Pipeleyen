@@ -66,9 +66,35 @@ const PipeleyenApp = (function () {
 
     async function fnConnectToContainer(sId) {
         try {
-            const response = await fetch("/api/connect/" + sId, {
-                method: "POST",
-            });
+            /* Discover script.json files in the container */
+            const responseScripts = await fetch("/api/scripts/" + sId);
+            const listScripts = await responseScripts.json();
+
+            let sScriptPath = null;
+            if (listScripts.length === 0) {
+                fnShowToast(
+                    "No script.json found in container", "error"
+                );
+                return;
+            } else if (listScripts.length === 1) {
+                sScriptPath = listScripts[0];
+            } else {
+                sScriptPath = prompt(
+                    "Multiple script.json files found. Choose one:\n\n" +
+                    listScripts
+                        .map(function (s, i) { return (i + 1) + ") " + s; })
+                        .join("\n") +
+                    "\n\nEnter the full path:",
+                    listScripts[0]
+                );
+                if (!sScriptPath) return;
+            }
+
+            const response = await fetch(
+                "/api/connect/" + sId +
+                "?sScriptPath=" + encodeURIComponent(sScriptPath),
+                { method: "POST" }
+            );
             if (!response.ok) {
                 const detail = await response.json();
                 fnShowToast(detail.detail || "Connection failed", "error");

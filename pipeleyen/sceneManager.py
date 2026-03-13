@@ -4,18 +4,45 @@ import json
 import os
 
 
-SCRIPT_PATH = "/workspace/script.json"
+DEFAULT_SEARCH_ROOT = "/workspace"
 
 REQUIRED_SCRIPT_KEYS = ("sPlotDirectory", "listScenes")
 REQUIRED_SCENE_KEYS = ("sName", "sDirectory", "saCommands", "saOutputFiles")
 
 
-def fdictLoadScriptFromContainer(connectionDocker, sContainerId):
+def flistFindScriptsInContainer(connectionDocker, sContainerId):
+    """Search for script.json files under /workspace and return paths."""
+    sCommand = (
+        "find /workspace -maxdepth 3 -name script.json -type f 2>/dev/null"
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    listPaths = [
+        sLine.strip()
+        for sLine in sOutput.splitlines()
+        if sLine.strip().endswith("script.json")
+    ]
+    return sorted(listPaths)
+
+
+def fdictLoadScriptFromContainer(
+    connectionDocker, sContainerId, sScriptPath=None
+):
     """Fetch and parse script.json from a Docker container."""
-    baContent = connectionDocker.fbaFetchFile(sContainerId, SCRIPT_PATH)
+    if sScriptPath is None:
+        listPaths = flistFindScriptsInContainer(
+            connectionDocker, sContainerId
+        )
+        if not listPaths:
+            raise FileNotFoundError(
+                "No script.json found under /workspace"
+            )
+        sScriptPath = listPaths[0]
+    baContent = connectionDocker.fbaFetchFile(sContainerId, sScriptPath)
     dictScript = json.loads(baContent.decode("utf-8"))
     if not fbValidateScript(dictScript):
-        raise ValueError("Invalid script.json structure")
+        raise ValueError(f"Invalid script.json: {sScriptPath}")
     return dictScript
 
 
@@ -109,12 +136,14 @@ def fnReorderScene(dictScript, iFromIndex, iToIndex):
 
 
 def fnSaveScriptToContainer(
-    connectionDocker, sContainerId, dictScript
+    connectionDocker, sContainerId, dictScript, sScriptPath=None
 ):
     """Serialize dictScript to JSON and write to container."""
+    if sScriptPath is None:
+        raise ValueError("sScriptPath is required for saving")
     sJson = json.dumps(dictScript, indent=2) + "\n"
     connectionDocker.fnWriteFile(
-        sContainerId, SCRIPT_PATH, sJson.encode("utf-8")
+        sContainerId, sScriptPath, sJson.encode("utf-8")
     )
 
 

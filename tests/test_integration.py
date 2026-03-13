@@ -35,6 +35,10 @@ def mockDockerEnv(dictSampleScript, baSampleScriptBytes):
             {"size": len(baSampleScriptBytes)},
         )
         mockContainer.put_archive.return_value = True
+        mockContainer.exec_run.return_value = (
+            0,
+            b"/workspace/GJ1132/script.json\n",
+        )
 
         yield {
             "mockClient": mockClient,
@@ -63,17 +67,24 @@ class TestGetContainers:
 class TestConnectToContainer:
     def test_loadsScript(self, client, mockDockerEnv):
         sId = mockDockerEnv["sContainerId"]
-        response = client.post(f"/api/connect/{sId}")
+        response = client.post(
+            f"/api/connect/{sId}",
+            params={"sScriptPath": "/workspace/GJ1132/script.json"},
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["sContainerId"] == sId
+        assert data["sScriptPath"] == "/workspace/GJ1132/script.json"
         assert "listScenes" in data["dictScript"]
         assert len(data["dictScript"]["listScenes"]) == 3
 
 
 class TestSceneCrud:
     def _fnConnect(self, client, sContainerId):
-        client.post(f"/api/connect/{sContainerId}")
+        client.post(
+            f"/api/connect/{sContainerId}",
+            params={"sScriptPath": "/workspace/GJ1132/script.json"},
+        )
 
     def test_getSceneList(self, client, mockDockerEnv):
         sId = mockDockerEnv["sContainerId"]

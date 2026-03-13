@@ -92,6 +92,7 @@ async def fnRunSelectedScenes(
     sContainerId,
     listSceneIndices,
     dictScript,
+    sScriptPath,
     fnStatusCallback,
 ):
     """Run only selected scenes by toggling bEnabled."""
@@ -105,13 +106,15 @@ async def fnRunSelectedScenes(
                 iIndex in setSelected
             )
         sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictScript
+            connectionDocker, sContainerId, dictScript,
+            sScriptPath,
         )
         iResult = await fnRunDirector(
             connectionDocker, sContainerId, [], fnStatusCallback
         )
     finally:
         sceneManager.fnSaveScriptToContainer(
-            connectionDocker, sContainerId, dictBackup
+            connectionDocker, sContainerId, dictBackup,
+            sScriptPath,
         )
     return iResult
