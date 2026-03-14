@@ -16,6 +16,7 @@ async def fnRunDirector(
     connectionDocker,
     sContainerId,
     saExtraArguments,
+    sWorkdir,
     fnStatusCallback,
 ):
     """Run director.py in the container, streaming output."""
@@ -25,7 +26,7 @@ async def fnRunDirector(
     )
 
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand, sWorkdir="/workspace"
+        sContainerId, sCommand, sWorkdir=sWorkdir
     )
     for sLine in sOutput.splitlines():
         dictEvent = {"sType": "output", "sLine": sLine}
@@ -52,11 +53,12 @@ async def fnRunDirector(
 
 
 async def fnRunAllScenes(
-    connectionDocker, sContainerId, fnStatusCallback
+    connectionDocker, sContainerId, sWorkdir, fnStatusCallback
 ):
     """Run all scenes via director.py."""
     return await fnRunDirector(
-        connectionDocker, sContainerId, [], fnStatusCallback
+        connectionDocker, sContainerId, [], sWorkdir,
+        fnStatusCallback,
     )
 
 
@@ -64,6 +66,7 @@ async def fnRunFromScene(
     connectionDocker,
     sContainerId,
     iStartScene,
+    sWorkdir,
     fnStatusCallback,
 ):
     """Run director.py starting from scene N."""
@@ -71,18 +74,20 @@ async def fnRunFromScene(
         connectionDocker,
         sContainerId,
         [f"--start-scene {iStartScene}"],
+        sWorkdir,
         fnStatusCallback,
     )
 
 
 async def fnVerifyOnly(
-    connectionDocker, sContainerId, fnStatusCallback
+    connectionDocker, sContainerId, sWorkdir, fnStatusCallback
 ):
     """Run director.py in verify-only mode."""
     return await fnRunDirector(
         connectionDocker,
         sContainerId,
         ["--verify-only"],
+        sWorkdir,
         fnStatusCallback,
     )
 
@@ -93,6 +98,7 @@ async def fnRunSelectedScenes(
     listSceneIndices,
     dictScript,
     sScriptPath,
+    sWorkdir,
     fnStatusCallback,
 ):
     """Run only selected scenes by toggling bEnabled."""
@@ -110,7 +116,8 @@ async def fnRunSelectedScenes(
             sScriptPath,
         )
         iResult = await fnRunDirector(
-            connectionDocker, sContainerId, [], fnStatusCallback
+            connectionDocker, sContainerId, [], sWorkdir,
+            fnStatusCallback,
         )
     finally:
         sceneManager.fnSaveScriptToContainer(

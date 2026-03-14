@@ -95,7 +95,7 @@ const PipeleyenTerminal = (function () {
                 green: "#2ecc71",
                 yellow: "#e09401",
                 blue: "#1321d8",
-                magenta: "#642197",
+                magenta: "#9b59b6",
                 cyan: "#13aed5",
                 white: "#e0e0e8",
                 brightBlack: "#6a6a88",
@@ -227,6 +227,15 @@ const PipeleyenTerminal = (function () {
         }
     }
 
+    function fnFitActiveTerminal() {
+        if (iActiveTabIndex >= 0 && iActiveTabIndex < listTabs.length) {
+            var dictTab = listTabs[iActiveTabIndex];
+            if (dictTab.fitAddon) {
+                dictTab.fitAddon.fit();
+            }
+        }
+    }
+
     /* Bind the add-tab button */
     document.addEventListener("DOMContentLoaded", function () {
         document
@@ -237,5 +246,6 @@ const PipeleyenTerminal = (function () {
     return {
         fnCreateTab: fnCreateTab,
         fnCloseAll: fnCloseAll,
+        fnFitActiveTerminal: fnFitActiveTerminal,
     };
 })();

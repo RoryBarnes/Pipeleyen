@@ -38,22 +38,37 @@
                 title="Disconnect from container">Disconnect</button>
     </div>
 
-    <!-- Left Panel: Scenes -->
-    <div id="panelScenes">
-        <div class="panel-header">
-            <span>Scenes</span>
-            <button class="btn-icon" id="btnNewScene"
-                    title="Create new scene">+</button>
+    <!-- Left Panel -->
+    <div id="panelLeft">
+        <div id="leftPanelTabs">
+            <div class="left-tab active" data-panel="scenes">Scenes</div>
+            <div class="left-tab" data-panel="files">Files</div>
         </div>
-        <div id="listScenes"></div>
+
+        <!-- Scenes sub-panel -->
+        <div id="panelScenes" class="active">
+            <div class="panel-header">
+                <button class="btn-icon" id="btnNewScene"
+                        title="Create new scene">+</button>
+            </div>
+            <div id="listScenes"></div>
+        </div>
+
+        <!-- Files sub-panel -->
+        <div id="panelFiles">
+            <div id="fileBreadcrumb"></div>
+            <div id="listFiles"></div>
+        </div>
+
+        <div class="resize-handle-horizontal"></div>
     </div>
 
     <!-- Right Panels -->
     <div id="panelRight">
-        <!-- Figure Viewer -->
+        <!-- Figure / View panel -->
         <div id="panelFigure">
             <div class="panel-header">
-                <label>Figure</label>
+                <label>View</label>
                 <select id="selectFigure">
                     <option value="">Select a figure...</option>
                 </select>
@@ -62,10 +77,14 @@
             </div>
             <div id="figureViewport">
                 <span class="placeholder">
-                    Select a scene to view its figures
+                    Select a scene to view its details and figures
                 </span>
             </div>
+            <div id="viewContent"></div>
         </div>
+
+        <!-- Resize handle -->
+        <div class="resize-handle-vertical" id="resizeHandleVertical"></div>
 
         <!-- Terminal -->
         <div id="panelTerminal">

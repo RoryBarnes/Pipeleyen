@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import posixpath
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
@@ -69,6 +70,20 @@ def fappCreateApplication():
             raise HTTPException(404, "Not connected to container")
         return sPath
 
+    def fsGetScriptDirectory(sContainerId):
+        """Return the directory containing script.json."""
+        return posixpath.dirname(fsGetScriptPath(sContainerId))
+
+    def fdictGetVariables(sContainerId):
+        """Build resolved variable dict for a connected container."""
+        dictScript = dictScriptCache.get(sContainerId)
+        sScriptPath = dictScriptPathCache.get(sContainerId)
+        if not dictScript or not sScriptPath:
+            return {}
+        return sceneManager.fdictBuildGlobalVariables(
+            dictScript, sScriptPath
+        )
+
     # --- Container routes ---
 
     @app.get("/api/containers")
@@ -118,6 +133,44 @@ def fappCreateApplication():
                 detail=f"Failed to load script.json: {error}",
             )
 
+    # --- Directory listing ---
+
+    @app.get("/api/files/{sContainerId}/{sDirectoryPath:path}")
+    async def fnListDirectory(
+        sContainerId: str, sDirectoryPath: str
+    ):
+        """List files and directories at the given path."""
+        sAbsPath = (
+            sDirectoryPath
+            if sDirectoryPath.startswith("/")
+            else f"/workspace/{sDirectoryPath}"
+        )
+        sCommand = (
+            f"find {sAbsPath} -maxdepth 1 -mindepth 1 "
+            f"\\( -type f -o -type d \\) 2>/dev/null | sort"
+        )
+        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId, sCommand
+        )
+        listEntries = []
+        for sLine in sOutput.splitlines():
+            sLine = sLine.strip()
+            if not sLine:
+                continue
+            sName = posixpath.basename(sLine)
+            iCheckDir, _ = connectionDocker.ftResultExecuteCommand(
+                sContainerId, f"test -d {sLine} && echo d || echo f"
+            )
+            bIsDirectory = "d" in _
+            listEntries.append(
+                {
+                    "sName": sName,
+                    "sPath": sLine,
+                    "bIsDirectory": bIsDirectory,
+                }
+            )
+        return listEntries
+
     # --- Scene routes ---
 
     @app.get("/api/scenes/{sContainerId}")
@@ -133,7 +186,16 @@ def fappCreateApplication():
         if not dictScript:
             raise HTTPException(404, "Not connected to container")
         try:
-            return sceneManager.fdictGetScene(dictScript, iSceneIndex)
+            dictScene = sceneManager.fdictGetScene(
+                dictScript, iSceneIndex
+            )
+            dictVariables = fdictGetVariables(sContainerId)
+            dictScene["saResolvedOutputFiles"] = (
+                sceneManager.flistResolveOutputFiles(
+                    dictScene, dictVariables
+                )
+            )
+            return dictScene
         except IndexError as error:
             raise HTTPException(404, str(error))
 
@@ -250,11 +312,11 @@ def fappCreateApplication():
 
     @app.get("/api/figure/{sContainerId}/{sFilePath:path}")
     async def fnServeFigure(sContainerId: str, sFilePath: str):
-        sAbsPath = (
-            sFilePath
-            if sFilePath.startswith("/")
-            else f"/workspace/{sFilePath}"
-        )
+        sScriptDirectory = fsGetScriptDirectory(sContainerId)
+        if sFilePath.startswith("/"):
+            sAbsPath = sFilePath
+        else:
+            sAbsPath = posixpath.join(sScriptDirectory, sFilePath)
         try:
             baContent = connectionDocker.fbaFetchFile(
                 sContainerId, sAbsPath
@@ -279,6 +341,10 @@ def fappCreateApplication():
             await websocket.close()
             return
 
+        sScriptDirectory = posixpath.dirname(
+            dictScriptPathCache.get(sContainerId, "")
+        )
+
         try:
             while True:
                 sMessage = await websocket.receive_text()
@@ -292,6 +358,7 @@ def fappCreateApplication():
                     await fnRunAllScenes(
                         connectionDocker,
                         sContainerId,
+                        sScriptDirectory,
                         fnCallback,
                     )
                 elif sAction == "runFrom":
@@ -300,12 +367,14 @@ def fappCreateApplication():
                         connectionDocker,
                         sContainerId,
                         iStart,
+                        sScriptDirectory,
                         fnCallback,
                     )
                 elif sAction == "verify":
                     await fnVerifyOnly(
                         connectionDocker,
                         sContainerId,
+                        sScriptDirectory,
                         fnCallback,
                     )
                 elif sAction == "runSelected":
@@ -318,6 +387,7 @@ def fappCreateApplication():
                         listIndices,
                         dictScript,
                         dictScriptPathCache.get(sContainerId),
+                        sScriptDirectory,
                         fnCallback,
                     )
         except WebSocketDisconnect:
@@ -351,16 +421,21 @@ def fappCreateApplication():
 
         async def fnReadLoop():
             while session._bRunning:
-                baOutput = session.fbaReadOutput()
-                if baOutput:
-                    await websocket.send_bytes(baOutput)
-                else:
-                    await asyncio.sleep(0.05)
+                try:
+                    baOutput = session.fbaReadOutput()
+                    if baOutput:
+                        await websocket.send_bytes(baOutput)
+                    else:
+                        await asyncio.sleep(0.05)
+                except Exception:
+                    break
 
         taskReader = asyncio.create_task(fnReadLoop())
         try:
             while True:
                 message = await websocket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    break
                 if "bytes" in message:
                     session.fnSendInput(message["bytes"])
                 elif "text" in message:
@@ -373,8 +448,8 @@ def fappCreateApplication():
         except WebSocketDisconnect:
             pass
         finally:
-            taskReader.cancel()
             session.fnClose()
+            taskReader.cancel()
             dictTerminalSessions.pop(sSessionId, None)
 
     # --- Static files ---

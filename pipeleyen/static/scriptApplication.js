@@ -5,7 +5,9 @@ const PipeleyenApp = (function () {
 
     let sContainerId = null;
     let dictScript = null;
+    let sScriptPath = null;
     let iSelectedSceneIndex = -1;
+    let iExpandedSceneIndex = -1;
     let wsPipeline = null;
     let dictSceneStatus = {};
 
@@ -15,6 +17,8 @@ const PipeleyenApp = (function () {
         fnLoadContainers();
         fnBindToolbarEvents();
         fnBindContextMenuEvents();
+        fnBindLeftPanelTabs();
+        fnBindResizeHandles();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
@@ -66,33 +70,30 @@ const PipeleyenApp = (function () {
 
     async function fnConnectToContainer(sId) {
         try {
-            /* Discover script.json files in the container */
             const responseScripts = await fetch("/api/scripts/" + sId);
             const listScripts = await responseScripts.json();
 
-            let sScriptPath = null;
+            let sChosenPath = null;
             if (listScripts.length === 0) {
-                fnShowToast(
-                    "No script.json found in container", "error"
-                );
+                fnShowToast("No script.json found in container", "error");
                 return;
             } else if (listScripts.length === 1) {
-                sScriptPath = listScripts[0];
+                sChosenPath = listScripts[0];
             } else {
-                sScriptPath = prompt(
-                    "Multiple script.json files found. Choose one:\n\n" +
+                sChosenPath = prompt(
+                    "Multiple script.json files found:\n\n" +
                     listScripts
                         .map(function (s, i) { return (i + 1) + ") " + s; })
                         .join("\n") +
                     "\n\nEnter the full path:",
                     listScripts[0]
                 );
-                if (!sScriptPath) return;
+                if (!sChosenPath) return;
             }
 
             const response = await fetch(
                 "/api/connect/" + sId +
-                "?sScriptPath=" + encodeURIComponent(sScriptPath),
+                "?sScriptPath=" + encodeURIComponent(sChosenPath),
                 { method: "POST" }
             );
             if (!response.ok) {
@@ -103,6 +104,7 @@ const PipeleyenApp = (function () {
             const data = await response.json();
             sContainerId = sId;
             dictScript = data.dictScript;
+            sScriptPath = data.sScriptPath;
             fnShowMainLayout();
             fnRenderSceneList();
             PipeleyenTerminal.fnCreateTab();
@@ -119,71 +121,141 @@ const PipeleyenApp = (function () {
     function fnDisconnect() {
         sContainerId = null;
         dictScript = null;
+        sScriptPath = null;
         iSelectedSceneIndex = -1;
+        iExpandedSceneIndex = -1;
         dictSceneStatus = {};
+        if (wsPipeline) {
+            wsPipeline.close();
+            wsPipeline = null;
+        }
         PipeleyenTerminal.fnCloseAll();
         document.getElementById("mainLayout").classList.remove("active");
         document.getElementById("containerPicker").style.display = "flex";
         fnLoadContainers();
     }
 
+    /* --- Left Panel Tabs --- */
+
+    function fnBindLeftPanelTabs() {
+        document.querySelectorAll(".left-tab").forEach(function (el) {
+            el.addEventListener("click", function () {
+                document.querySelectorAll(".left-tab").forEach(function (t) {
+                    t.classList.remove("active");
+                });
+                el.classList.add("active");
+                var sPanel = el.dataset.panel;
+                document.getElementById("panelScenes").classList.toggle(
+                    "active", sPanel === "scenes"
+                );
+                document.getElementById("panelFiles").classList.toggle(
+                    "active", sPanel === "files"
+                );
+                if (sPanel === "files") {
+                    PipeleyenFiles.fnLoadDirectory(
+                        fsGetScriptDirectory()
+                    );
+                }
+            });
+        });
+    }
+
+    function fsGetScriptDirectory() {
+        if (!sScriptPath) return "/workspace";
+        var iLastSlash = sScriptPath.lastIndexOf("/");
+        return iLastSlash > 0 ? sScriptPath.substring(0, iLastSlash) : "/workspace";
+    }
+
     /* --- Scene List --- */
 
     function fnRenderSceneList() {
-        const elList = document.getElementById("listScenes");
+        var elList = document.getElementById("listScenes");
         if (!dictScript || !dictScript.listScenes) {
             elList.innerHTML = "";
             return;
         }
-        elList.innerHTML = dictScript.listScenes
-            .map(function (scene, iIndex) {
-                const sStatusClass =
-                    dictSceneStatus[iIndex] || "";
-                const bEnabled = scene.bEnabled !== false;
-                const bSelected = iIndex === iSelectedSceneIndex;
-                return (
-                    '<div class="scene-item' +
-                    (bSelected ? " selected" : "") +
-                    '" data-index="' +
-                    iIndex +
-                    '" draggable="true">' +
-                    '<input type="checkbox" class="scene-checkbox"' +
-                    (bEnabled ? " checked" : "") +
-                    ">" +
-                    '<span class="scene-number">' +
-                    String(iIndex + 1).padStart(2, "0") +
-                    "</span>" +
-                    '<span class="scene-name" title="' +
-                    fnEscapeHtml(scene.sName) +
-                    '">' +
-                    fnEscapeHtml(scene.sName) +
-                    "</span>" +
-                    '<span class="scene-status ' +
-                    sStatusClass +
-                    '"></span>' +
-                    '<span class="scene-actions">' +
-                    '<button class="btn-icon scene-edit" title="Edit">&#9998;</button>' +
-                    "</span>" +
-                    "</div>"
-                );
-            })
-            .join("");
+        var sHtml = "";
+        dictScript.listScenes.forEach(function (scene, iIndex) {
+            var sStatusClass = dictSceneStatus[iIndex] || "";
+            var bEnabled = scene.bEnabled !== false;
+            var bSelected = iIndex === iSelectedSceneIndex;
+            var bExpanded = iIndex === iExpandedSceneIndex;
+
+            sHtml +=
+                '<div class="scene-item' +
+                (bSelected ? " selected" : "") +
+                '" data-index="' + iIndex + '" draggable="true">' +
+                '<input type="checkbox" class="scene-checkbox"' +
+                (bEnabled ? " checked" : "") + ">" +
+                '<span class="scene-number">' +
+                String(iIndex + 1).padStart(2, "0") + "</span>" +
+                '<span class="scene-name" title="' +
+                fnEscapeHtml(scene.sName) + '">' +
+                fnEscapeHtml(scene.sName) + "</span>" +
+                '<span class="scene-status ' + sStatusClass + '"></span>' +
+                '<span class="scene-actions">' +
+                '<button class="btn-icon scene-edit" title="Edit">&#9998;</button>' +
+                "</span></div>";
+
+            /* Expandable detail */
+            sHtml += '<div class="scene-detail' +
+                (bExpanded ? " expanded" : "") +
+                '" data-index="' + iIndex + '">';
+            sHtml += '<div class="detail-label">Directory</div>';
+            sHtml += '<div class="detail-field" data-view="field" data-field="sDirectory">' +
+                fnEscapeHtml(scene.sDirectory) + "</div>";
+            sHtml += '<div class="detail-label">Plot Only: ' +
+                (scene.bPlotOnly !== false ? "Yes" : "No") + "</div>";
+
+            if (scene.saSetupCommands && scene.saSetupCommands.length > 0) {
+                sHtml += '<div class="detail-label">Setup Commands</div>';
+                scene.saSetupCommands.forEach(function (sCmd) {
+                    sHtml += '<div class="detail-command" data-view="command">' +
+                        fnEscapeHtml(sCmd) + "</div>";
+                });
+            }
+            if (scene.saCommands && scene.saCommands.length > 0) {
+                sHtml += '<div class="detail-label">Commands</div>';
+                scene.saCommands.forEach(function (sCmd) {
+                    sHtml += '<div class="detail-command" data-view="command">' +
+                        fnEscapeHtml(sCmd) + "</div>";
+                });
+            }
+            if (scene.saOutputFiles && scene.saOutputFiles.length > 0) {
+                sHtml += '<div class="detail-label">Output Files</div>';
+                scene.saOutputFiles.forEach(function (sFile) {
+                    var bIsFigure = fbIsFigureFile(sFile);
+                    sHtml += '<div class="detail-output' +
+                        (bIsFigure ? " figure" : "") +
+                        '" data-view="output" data-path="' +
+                        fnEscapeHtml(sFile) + '">' +
+                        fnEscapeHtml(sFile) + "</div>";
+                });
+            }
+            sHtml += "</div>";
+        });
+        elList.innerHTML = sHtml;
         fnBindSceneEvents();
     }
 
+    function fbIsFigureFile(sPath) {
+        var sLower = sPath.toLowerCase();
+        return sLower.endsWith(".pdf") || sLower.endsWith(".png") ||
+            sLower.endsWith(".jpg") || sLower.endsWith(".jpeg") ||
+            sLower.endsWith(".svg");
+    }
+
     function fnBindSceneEvents() {
-        const elList = document.getElementById("listScenes");
+        var elList = document.getElementById("listScenes");
         elList.querySelectorAll(".scene-item").forEach(function (el) {
-            const iIndex = parseInt(el.dataset.index);
+            var iIndex = parseInt(el.dataset.index);
 
             el.addEventListener("click", function (event) {
-                if (
-                    event.target.classList.contains("scene-checkbox") ||
-                    event.target.classList.contains("scene-edit")
-                ) {
+                if (event.target.classList.contains("scene-checkbox") ||
+                    event.target.classList.contains("scene-edit")) {
                     return;
                 }
-                fnSelectScene(iIndex);
+                fnToggleSceneExpand(iIndex);
             });
 
             el.addEventListener("contextmenu", function (event) {
@@ -192,20 +264,18 @@ const PipeleyenApp = (function () {
             });
 
             el.querySelector(".scene-checkbox").addEventListener(
-                "change",
-                function (event) {
+                "change", function (event) {
                     fnToggleSceneEnabled(iIndex, event.target.checked);
                 }
             );
 
-            const btnEdit = el.querySelector(".scene-edit");
+            var btnEdit = el.querySelector(".scene-edit");
             if (btnEdit) {
                 btnEdit.addEventListener("click", function () {
                     PipeleyenSceneEditor.fnOpenEditModal(iIndex);
                 });
             }
 
-            /* Drag and drop reordering */
             el.addEventListener("dragstart", function (event) {
                 event.dataTransfer.setData("text/plain", String(iIndex));
                 el.classList.add("dragging");
@@ -218,7 +288,7 @@ const PipeleyenApp = (function () {
             });
             el.addEventListener("drop", function (event) {
                 event.preventDefault();
-                const iFromIndex = parseInt(
+                var iFromIndex = parseInt(
                     event.dataTransfer.getData("text/plain")
                 );
                 if (iFromIndex !== iIndex) {
@@ -226,12 +296,56 @@ const PipeleyenApp = (function () {
                 }
             });
         });
+
+        /* Bind detail item clicks */
+        elList.querySelectorAll("[data-view='output']").forEach(function (el) {
+            el.addEventListener("click", function () {
+                var sPath = el.dataset.path;
+                if (fbIsFigureFile(sPath)) {
+                    PipeleyenFigureViewer.fnDisplayFigureByTemplate(sPath);
+                } else {
+                    fnShowFieldView("Output File", sPath);
+                }
+            });
+        });
+
+        elList.querySelectorAll("[data-view='command']").forEach(function (el) {
+            el.addEventListener("click", function () {
+                fnShowFieldView("Command", el.textContent);
+            });
+        });
+
+        elList.querySelectorAll("[data-view='field']").forEach(function (el) {
+            el.addEventListener("click", function () {
+                fnShowFieldView(el.dataset.field, el.textContent);
+            });
+        });
     }
 
-    function fnSelectScene(iIndex) {
+    function fnToggleSceneExpand(iIndex) {
+        if (iExpandedSceneIndex === iIndex) {
+            iExpandedSceneIndex = -1;
+        } else {
+            iExpandedSceneIndex = iIndex;
+        }
         iSelectedSceneIndex = iIndex;
         fnRenderSceneList();
         PipeleyenFigureViewer.fnLoadSceneFigures(iIndex);
+    }
+
+    function fnShowFieldView(sLabel, sValue) {
+        var elViewport = document.getElementById("figureViewport");
+        var elViewContent = document.getElementById("viewContent");
+        elViewport.style.display = "none";
+        elViewContent.classList.add("active");
+        elViewContent.innerHTML =
+            '<div class="view-title">' + fnEscapeHtml(sLabel) + "</div>" +
+            "<pre>" + fnEscapeHtml(sValue) + "</pre>";
+    }
+
+    function fnShowFigureViewport() {
+        document.getElementById("figureViewport").style.display = "";
+        document.getElementById("viewContent").classList.remove("active");
     }
 
     async function fnToggleSceneEnabled(iIndex, bEnabled) {
@@ -252,7 +366,7 @@ const PipeleyenApp = (function () {
 
     async function fnReorderScene(iFromIndex, iToIndex) {
         try {
-            const response = await fetch(
+            var response = await fetch(
                 "/api/scenes/" + sContainerId + "/reorder",
                 {
                     method: "POST",
@@ -264,7 +378,7 @@ const PipeleyenApp = (function () {
                 }
             );
             if (response.ok) {
-                const scene = dictScript.listScenes.splice(iFromIndex, 1)[0];
+                var scene = dictScript.listScenes.splice(iFromIndex, 1)[0];
                 dictScript.listScenes.splice(iToIndex, 0, scene);
                 fnRenderSceneList();
                 fnShowToast("Scene reordered", "success");
@@ -274,47 +388,103 @@ const PipeleyenApp = (function () {
         }
     }
 
+    /* --- Resize Handles --- */
+
+    function fnBindResizeHandles() {
+        /* Horizontal: left panel width */
+        var elLeft = document.getElementById("panelLeft");
+        var elHandleH = elLeft.querySelector(".resize-handle-horizontal");
+        if (elHandleH) {
+            fnMakeDraggable(elHandleH, function (iDeltaX) {
+                var iWidth = elLeft.offsetWidth + iDeltaX;
+                iWidth = Math.max(180, Math.min(iWidth, 600));
+                document.getElementById("mainLayout").style.gridTemplateColumns =
+                    iWidth + "px 1fr";
+            });
+        }
+
+        /* Vertical: figure/terminal split */
+        var elHandleV = document.getElementById("resizeHandleVertical");
+        if (elHandleV) {
+            var elFigure = document.getElementById("panelFigure");
+            fnMakeDraggableVertical(elHandleV, function (iDeltaY) {
+                var iHeight = elFigure.offsetHeight + iDeltaY;
+                iHeight = Math.max(80, iHeight);
+                elFigure.style.flex = "0 0 " + iHeight + "px";
+            });
+        }
+    }
+
+    function fnMakeDraggable(elHandle, fnOnMove) {
+        var iStartX = 0;
+        elHandle.addEventListener("mousedown", function (event) {
+            iStartX = event.clientX;
+            event.preventDefault();
+            function fnMouseMove(e) {
+                var iDelta = e.clientX - iStartX;
+                iStartX = e.clientX;
+                fnOnMove(iDelta);
+            }
+            function fnMouseUp() {
+                document.removeEventListener("mousemove", fnMouseMove);
+                document.removeEventListener("mouseup", fnMouseUp);
+            }
+            document.addEventListener("mousemove", fnMouseMove);
+            document.addEventListener("mouseup", fnMouseUp);
+        });
+    }
+
+    function fnMakeDraggableVertical(elHandle, fnOnMove) {
+        elHandle.addEventListener("mousedown", function (event) {
+            var iStartY = event.clientY;
+            event.preventDefault();
+            function fnMouseMove(e) {
+                var iDelta = e.clientY - iStartY;
+                iStartY = e.clientY;
+                fnOnMove(iDelta);
+            }
+            function fnMouseUp() {
+                document.removeEventListener("mousemove", fnMouseMove);
+                document.removeEventListener("mouseup", fnMouseUp);
+                PipeleyenTerminal.fnFitActiveTerminal();
+            }
+            document.addEventListener("mousemove", fnMouseMove);
+            document.addEventListener("mouseup", fnMouseUp);
+        });
+    }
+
     /* --- Toolbar Events --- */
 
     function fnBindToolbarEvents() {
         document.getElementById("btnRunSelected").addEventListener(
-            "click",
-            fnRunSelected
+            "click", fnRunSelected
         );
         document.getElementById("btnRunAll").addEventListener(
-            "click",
-            fnRunAll
+            "click", fnRunAll
         );
         document.getElementById("btnVerify").addEventListener(
-            "click",
-            fnVerify
+            "click", fnVerify
         );
         document.getElementById("btnVsCode").addEventListener(
-            "click",
-            fnOpenVsCode
+            "click", fnOpenVsCode
         );
         document.getElementById("btnDisconnect").addEventListener(
-            "click",
-            fnDisconnect
+            "click", fnDisconnect
         );
     }
 
     function fnConnectPipelineWebSocket() {
-        if (wsPipeline) {
+        if (wsPipeline && wsPipeline.readyState === WebSocket.OPEN) {
             return wsPipeline;
         }
-        const sProtocol =
+        var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
-        const sUrl =
-            sProtocol +
-            "//" +
-            window.location.host +
-            "/ws/pipeline/" +
-            sContainerId;
+        var sUrl =
+            sProtocol + "//" + window.location.host +
+            "/ws/pipeline/" + sContainerId;
         wsPipeline = new WebSocket(sUrl);
         wsPipeline.onmessage = function (event) {
-            const dictEvent = JSON.parse(event.data);
-            fnHandlePipelineEvent(dictEvent);
+            fnHandlePipelineEvent(JSON.parse(event.data));
         };
         wsPipeline.onclose = function () {
             wsPipeline = null;
@@ -335,16 +505,13 @@ const PipeleyenApp = (function () {
             fnShowToast("Pipeline completed", "success");
         } else if (dictEvent.sType === "failed") {
             fnShowToast(
-                "Pipeline failed (exit " + dictEvent.iExitCode + ")",
-                "error"
+                "Pipeline failed (exit " + dictEvent.iExitCode + ")", "error"
             );
-        } else if (dictEvent.sType === "output") {
-            /* Output lines could be shown in a log panel */
         }
     }
 
     function fnSendPipelineAction(dictAction) {
-        const ws = fnConnectPipelineWebSocket();
+        var ws = fnConnectPipelineWebSocket();
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(dictAction));
         } else {
@@ -355,11 +522,10 @@ const PipeleyenApp = (function () {
     }
 
     function fnRunSelected() {
-        const listIndices = [];
-        document
-            .querySelectorAll(".scene-checkbox:checked")
+        var listIndices = [];
+        document.querySelectorAll(".scene-checkbox:checked")
             .forEach(function (el) {
-                const iIndex = parseInt(
+                var iIndex = parseInt(
                     el.closest(".scene-item").dataset.index
                 );
                 listIndices.push(iIndex);
@@ -385,8 +551,8 @@ const PipeleyenApp = (function () {
     }
 
     function fnOpenVsCode() {
-        const sHexId = sContainerId.replace(/-/g, "");
-        const sUri =
+        var sHexId = sContainerId.replace(/-/g, "");
+        var sUri =
             "vscode://ms-vscode-remote.remote-containers/attach?containerId=" +
             sHexId;
         window.open(sUri, "_blank");
@@ -395,11 +561,11 @@ const PipeleyenApp = (function () {
 
     /* --- Context Menu --- */
 
-    let iContextSceneIndex = -1;
+    var iContextSceneIndex = -1;
 
     function fnShowContextMenu(iX, iY, iIndex) {
         iContextSceneIndex = iIndex;
-        const el = document.getElementById("contextMenu");
+        var el = document.getElementById("contextMenu");
         el.style.left = iX + "px";
         el.style.top = iY + "px";
         el.classList.add("active");
@@ -410,13 +576,11 @@ const PipeleyenApp = (function () {
     }
 
     function fnBindContextMenuEvents() {
-        document
-            .querySelectorAll(".context-menu-item")
+        document.querySelectorAll(".context-menu-item")
             .forEach(function (el) {
                 el.addEventListener("click", function (event) {
                     event.stopPropagation();
-                    const sAction = el.dataset.action;
-                    fnHandleContextAction(sAction, iContextSceneIndex);
+                    fnHandleContextAction(el.dataset.action, iContextSceneIndex);
                     fnHideContextMenu();
                 });
             });
@@ -440,12 +604,12 @@ const PipeleyenApp = (function () {
     }
 
     async function fnDeleteScene(iIndex) {
-        const sName = dictScript.listScenes[iIndex].sName;
+        var sName = dictScript.listScenes[iIndex].sName;
         if (!confirm('Delete scene "' + sName + '"?')) {
             return;
         }
         try {
-            const response = await fetch(
+            var response = await fetch(
                 "/api/scenes/" + sContainerId + "/" + iIndex,
                 { method: "DELETE" }
             );
@@ -453,6 +617,9 @@ const PipeleyenApp = (function () {
                 dictScript.listScenes.splice(iIndex, 1);
                 if (iSelectedSceneIndex === iIndex) {
                     iSelectedSceneIndex = -1;
+                }
+                if (iExpandedSceneIndex === iIndex) {
+                    iExpandedSceneIndex = -1;
                 }
                 fnRenderSceneList();
                 fnShowToast("Scene deleted", "success");
@@ -465,19 +632,17 @@ const PipeleyenApp = (function () {
     /* --- Toast Notifications --- */
 
     function fnShowToast(sMessage, sType) {
-        const el = document.createElement("div");
+        var el = document.createElement("div");
         el.className = "toast " + (sType || "");
         el.textContent = sMessage;
         document.getElementById("toastContainer").appendChild(el);
-        setTimeout(function () {
-            el.remove();
-        }, 4000);
+        setTimeout(function () { el.remove(); }, 4000);
     }
 
     /* --- Utilities --- */
 
     function fnEscapeHtml(sText) {
-        const el = document.createElement("span");
+        var el = document.createElement("span");
         el.textContent = sText;
         return el.innerHTML;
     }
@@ -489,15 +654,111 @@ const PipeleyenApp = (function () {
         fnShowToast: fnShowToast,
         fnRenderSceneList: fnRenderSceneList,
         fnEscapeHtml: fnEscapeHtml,
-        fsGetContainerId: function () {
-            return sContainerId;
-        },
-        fdictGetScript: function () {
-            return dictScript;
-        },
-        fiGetSelectedSceneIndex: function () {
-            return iSelectedSceneIndex;
-        },
+        fnShowFigureViewport: fnShowFigureViewport,
+        fnShowFieldView: fnShowFieldView,
+        fsGetContainerId: function () { return sContainerId; },
+        fdictGetScript: function () { return dictScript; },
+        fsGetScriptPath: function () { return sScriptPath; },
+        fiGetSelectedSceneIndex: function () { return iSelectedSceneIndex; },
+    };
+})();
+
+/* --- File Browser --- */
+
+var PipeleyenFiles = (function () {
+    "use strict";
+
+    var sCurrentPath = "/workspace";
+
+    async function fnLoadDirectory(sPath) {
+        sCurrentPath = sPath || "/workspace";
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+
+        fnRenderBreadcrumb(sCurrentPath);
+
+        try {
+            var response = await fetch(
+                "/api/files/" + sContainerId + "/" +
+                encodeURIComponent(sCurrentPath)
+            );
+            var listEntries = await response.json();
+            fnRenderFileList(listEntries);
+        } catch (error) {
+            document.getElementById("listFiles").innerHTML =
+                '<p style="padding:14px;color:var(--text-muted)">Error loading directory</p>';
+        }
+    }
+
+    function fnRenderBreadcrumb(sPath) {
+        var elBreadcrumb = document.getElementById("fileBreadcrumb");
+        var listParts = sPath.split("/").filter(Boolean);
+        var sHtml = "";
+        var sBuiltPath = "";
+        listParts.forEach(function (sPart, iIndex) {
+            sBuiltPath += "/" + sPart;
+            var sPathCopy = sBuiltPath;
+            if (iIndex > 0) sHtml += " / ";
+            sHtml += '<span class="crumb" data-path="' +
+                sPathCopy + '">' + sPart + "</span>";
+        });
+        elBreadcrumb.innerHTML = sHtml;
+        elBreadcrumb.querySelectorAll(".crumb").forEach(function (el) {
+            el.addEventListener("click", function () {
+                fnLoadDirectory(el.dataset.path);
+            });
+        });
+    }
+
+    function fnRenderFileList(listEntries) {
+        var elList = document.getElementById("listFiles");
+        if (listEntries.length === 0) {
+            elList.innerHTML =
+                '<p style="padding:14px;color:var(--text-muted)">Empty directory</p>';
+            return;
+        }
+
+        /* Sort: directories first, then files */
+        listEntries.sort(function (a, b) {
+            if (a.bIsDirectory !== b.bIsDirectory) {
+                return a.bIsDirectory ? -1 : 1;
+            }
+            return a.sName.localeCompare(b.sName);
+        });
+
+        elList.innerHTML = listEntries.map(function (entry) {
+            var sIconClass = entry.bIsDirectory ? "dir" : "";
+            var sIcon = entry.bIsDirectory ? "&#128193;" : "&#128196;";
+            var sLower = entry.sName.toLowerCase();
+            if (sLower.endsWith(".pdf") || sLower.endsWith(".png") ||
+                sLower.endsWith(".jpg") || sLower.endsWith(".svg")) {
+                sIconClass = "figure";
+            }
+            return (
+                '<div class="file-item" data-path="' + entry.sPath +
+                '" data-is-dir="' + entry.bIsDirectory + '">' +
+                '<span class="file-icon ' + sIconClass + '">' +
+                sIcon + "</span>" +
+                '<span class="file-name">' + entry.sName + "</span>" +
+                "</div>"
+            );
+        }).join("");
+
+        elList.querySelectorAll(".file-item").forEach(function (el) {
+            el.addEventListener("click", function () {
+                if (el.dataset.isDir === "true") {
+                    fnLoadDirectory(el.dataset.path);
+                } else {
+                    PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                        el.dataset.path
+                    );
+                }
+            });
+        });
+    }
+
+    return {
+        fnLoadDirectory: fnLoadDirectory,
     };
 })();
 

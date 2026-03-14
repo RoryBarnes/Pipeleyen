@@ -7,15 +7,18 @@ import pytest
 
 from pipeleyen.sceneManager import (
     fbValidateScript,
+    fdictBuildGlobalVariables,
     fdictCreateScene,
     fdictGetScene,
     flistExtractOutputFiles,
     flistExtractSceneNames,
     flistFilterFigureFiles,
+    flistResolveOutputFiles,
     fnDeleteScene,
     fnInsertScene,
     fnReorderScene,
     fnUpdateScene,
+    fsResolveVariables,
 )
 
 
@@ -188,6 +191,62 @@ class TestFlistFilterFigureFiles:
 
     def test_noFigures(self):
         assert flistFilterFigureFiles(["data.npy", "out.json"]) == []
+
+
+class TestFsResolveVariables:
+    def test_replacesKnownTokens(self):
+        sResult = fsResolveVariables(
+            "{sPlotDirectory}/fig.{sFigureType}",
+            {"sPlotDirectory": "Plot", "sFigureType": "pdf"},
+        )
+        assert sResult == "Plot/fig.pdf"
+
+    def test_leavesUnknownTokens(self):
+        sResult = fsResolveVariables(
+            "{sPlotDirectory}/{unknown}",
+            {"sPlotDirectory": "Plot"},
+        )
+        assert sResult == "Plot/{unknown}"
+
+    def test_noTokens(self):
+        sResult = fsResolveVariables("plain/path.pdf", {})
+        assert sResult == "plain/path.pdf"
+
+
+class TestFdictBuildGlobalVariables:
+    def test_extractsVariables(self, dictSampleScript):
+        dictVars = fdictBuildGlobalVariables(
+            dictSampleScript, "/workspace/GJ1132/script.json"
+        )
+        assert dictVars["sPlotDirectory"] == "Plot"
+        assert dictVars["sRepoRoot"] == "/workspace/GJ1132"
+        assert dictVars["sFigureType"] == "pdf"
+        assert dictVars["iNumberOfCores"] == -1
+
+    def test_defaultValues(self):
+        dictScript = {"listScenes": []}
+        dictVars = fdictBuildGlobalVariables(
+            dictScript, "/workspace/script.json"
+        )
+        assert dictVars["sPlotDirectory"] == "Plot"
+        assert dictVars["sFigureType"] == "pdf"
+
+
+class TestFlistResolveOutputFiles:
+    def test_resolvesTemplates(self):
+        dictScene = {
+            "saOutputFiles": [
+                "{sPlotDirectory}/fig.{sFigureType}",
+                "data/raw.npy",
+            ]
+        }
+        dictVars = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
+        listResult = flistResolveOutputFiles(dictScene, dictVars)
+        assert listResult == ["Plot/fig.pdf", "data/raw.npy"]
+
+    def test_emptyOutputFiles(self):
+        dictScene = {"saOutputFiles": []}
+        assert flistResolveOutputFiles(dictScene, {}) == []
 
 
 class TestFlistExtractOutputFiles:

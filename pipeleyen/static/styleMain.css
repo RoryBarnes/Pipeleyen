@@ -5,7 +5,7 @@
     --color-orange: #e09401;
     --color-pale-blue: #13aed5;
     --color-dark-blue: #1321d8;
-    --color-purple: #642197;
+    --color-purple: #9b59b6;
 
     --bg-primary: #1e1e2e;
     --bg-panel: #282840;
@@ -101,7 +101,7 @@ html, body {
     display: none;
     height: 100%;
     grid-template-columns: 280px 1fr;
-    grid-template-rows: 1fr;
+    grid-template-rows: 42px 1fr;
 }
 
 #mainLayout.active {
@@ -119,10 +119,6 @@ html, body {
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border-color);
     gap: 8px;
-}
-
-#mainLayout.active {
-    grid-template-rows: 42px 1fr;
 }
 
 #toolbar .toolbar-title {
@@ -184,39 +180,90 @@ html, body {
     color: var(--color-pale-blue);
 }
 
-/* --- Left Panel: Scene List --- */
+/* --- Left Panel --- */
 
-#panelScenes {
+#panelLeft {
     display: flex;
     flex-direction: column;
     border-right: 1px solid var(--border-color);
     background: var(--bg-panel);
+    overflow: hidden;
+    position: relative;
+    min-width: 200px;
+}
+
+/* Resize handle for left panel */
+#panelLeft .resize-handle-horizontal {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 10;
+}
+
+#panelLeft .resize-handle-horizontal:hover {
+    background: var(--color-pale-blue);
+    opacity: 0.3;
+}
+
+/* Left panel tabs */
+#leftPanelTabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.left-tab {
+    flex: 1;
+    padding: 10px 0;
+    text-align: center;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all var(--transition-speed);
+}
+
+.left-tab:hover {
+    color: var(--text-secondary);
+}
+
+.left-tab.active {
+    color: var(--color-pale-blue);
+    border-bottom-color: var(--color-dark-blue);
+}
+
+/* Scenes panel */
+#panelScenes {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
     overflow: hidden;
 }
 
 #panelScenes .panel-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px;
+    justify-content: flex-end;
+    padding: 8px 14px;
     border-bottom: 1px solid var(--border-color);
-    font-weight: 600;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-secondary);
 }
 
 #listScenes {
     flex: 1;
     overflow-y: auto;
-    padding: 6px 0;
+    padding: 4px 0;
 }
 
+/* Scene item */
 .scene-item {
     display: flex;
     align-items: center;
-    padding: 8px 14px;
+    padding: 6px 14px;
     cursor: pointer;
     transition: background var(--transition-speed);
     gap: 8px;
@@ -245,15 +292,15 @@ html, body {
 
 .scene-item .scene-number {
     flex-shrink: 0;
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: rgba(100, 33, 151, 0.25);
+    background: rgba(155, 89, 182, 0.2);
     color: var(--color-purple);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
 }
 
@@ -267,8 +314,8 @@ html, body {
 
 .scene-item .scene-status {
     flex-shrink: 0;
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--text-muted);
 }
@@ -300,21 +347,169 @@ html, body {
     display: flex;
 }
 
-/* --- Right panels --- */
+/* Scene detail (expandable) */
+.scene-detail {
+    display: none;
+    padding: 4px 14px 8px 50px;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.15);
+    border-left: 3px solid var(--color-pale-blue);
+}
 
-#panelRight {
-    display: grid;
-    grid-template-rows: 1fr 1fr;
+.scene-detail.expanded {
+    display: block;
+}
+
+.scene-detail .detail-field {
+    padding: 3px 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color var(--transition-speed);
+}
+
+.scene-detail .detail-field:hover {
+    color: var(--color-pale-blue);
+}
+
+.scene-detail .detail-label {
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 6px;
+    margin-bottom: 2px;
+}
+
+.scene-detail .detail-command {
+    padding: 2px 6px;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    margin: 2px 0;
+    word-break: break-all;
+    cursor: pointer;
+}
+
+.scene-detail .detail-command:hover {
+    color: var(--color-pale-blue);
+}
+
+.scene-detail .detail-output {
+    padding: 2px 6px;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 3px;
+    margin: 2px 0;
+}
+
+.scene-detail .detail-output:hover {
+    background: var(--bg-hover);
+    color: var(--color-pale-blue);
+}
+
+.scene-detail .detail-output.figure {
+    color: var(--color-orange);
+}
+
+/* Files panel */
+#panelFiles {
+    display: none;
+    flex-direction: column;
+    flex: 1;
     overflow: hidden;
 }
 
-/* --- Figure Viewer --- */
+#panelFiles.active {
+    display: flex;
+}
+
+#panelScenes.active {
+    display: flex;
+}
+
+#fileBreadcrumb {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    gap: 4px;
+    flex-shrink: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+#fileBreadcrumb .crumb {
+    cursor: pointer;
+    color: var(--color-pale-blue);
+}
+
+#fileBreadcrumb .crumb:hover {
+    text-decoration: underline;
+}
+
+#listFiles {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: 5px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    gap: 8px;
+    transition: background var(--transition-speed);
+}
+
+.file-item:hover {
+    background: var(--bg-hover);
+}
+
+.file-item .file-icon {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.file-item .file-icon.dir {
+    color: var(--color-pale-blue);
+}
+
+.file-item .file-icon.figure {
+    color: var(--color-orange);
+}
+
+.file-item .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --- Right panels --- */
+
+#panelRight {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* --- Figure / View panel --- */
 
 #panelFigure {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid var(--border-color);
+    flex: 1;
     overflow: hidden;
+    min-height: 100px;
+    position: relative;
 }
 
 #panelFigure .panel-header {
@@ -367,6 +562,67 @@ html, body {
 #figureViewport .placeholder {
     color: var(--text-muted);
     font-size: 14px;
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* View panel for non-figure content */
+#viewContent {
+    display: none;
+    flex: 1;
+    padding: 16px 20px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    background: var(--bg-primary);
+}
+
+#viewContent.active {
+    display: block;
+}
+
+#viewContent pre {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+#viewContent .view-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-pale-blue);
+    margin-bottom: 12px;
+}
+
+#viewContent .view-field {
+    margin-bottom: 12px;
+}
+
+#viewContent .view-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+#viewContent .view-value {
+    color: var(--text-primary);
+}
+
+/* Resize handle between figure and terminal */
+.resize-handle-vertical {
+    height: 6px;
+    cursor: row-resize;
+    background: var(--border-color);
+    flex-shrink: 0;
+}
+
+.resize-handle-vertical:hover {
+    background: var(--color-pale-blue);
+    opacity: 0.5;
 }
 
 /* --- Terminal --- */
@@ -375,6 +631,8 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 100px;
+    flex: 1;
 }
 
 #terminalTabs {

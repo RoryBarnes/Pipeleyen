@@ -16,40 +16,110 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnLoadSceneFigures(iSceneIndex) {
-        const dictScript = PipeleyenApp.fdictGetScript();
-        if (!dictScript || iSceneIndex < 0) return;
+        const sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId || iSceneIndex < 0) return;
 
-        const dictScene = dictScript.listScenes[iSceneIndex];
-        const listOutputFiles = dictScene.saOutputFiles || [];
-        const listFigures = listOutputFiles.filter(fbIsFigureFile);
+        fnFetchResolvedScene(iSceneIndex, function (dictScene) {
+            const listOutputFiles =
+                dictScene.saResolvedOutputFiles || dictScene.saOutputFiles || [];
+            const listFigures = listOutputFiles.filter(fbIsFigureFile);
 
-        const elSelect = document.getElementById("selectFigure");
-        elSelect.innerHTML =
-            '<option value="">Select a figure...</option>';
-        listFigures.forEach(function (sPath) {
-            const elOption = document.createElement("option");
-            elOption.value = sPath;
-            /* Show just the filename */
-            const sFilename = sPath.split("/").pop();
-            elOption.textContent = sFilename;
-            elSelect.appendChild(elOption);
-        });
+            const elSelect = document.getElementById("selectFigure");
+            elSelect.innerHTML =
+                '<option value="">Select a figure...</option>';
+            listFigures.forEach(function (sPath) {
+                const elOption = document.createElement("option");
+                elOption.value = sPath;
+                const sFilename = sPath.split("/").pop();
+                elOption.textContent = sFilename;
+                elSelect.appendChild(elOption);
+            });
 
-        elSelect.onchange = function () {
-            if (elSelect.value) {
-                fnDisplayFigure(elSelect.value);
+            elSelect.onchange = function () {
+                if (elSelect.value) {
+                    PipeleyenApp.fnShowFigureViewport();
+                    fnDisplayFigure(elSelect.value);
+                } else {
+                    fnClearViewport();
+                }
+            };
+
+            if (listFigures.length > 0) {
+                elSelect.value = listFigures[0];
+                PipeleyenApp.fnShowFigureViewport();
+                fnDisplayFigure(listFigures[0]);
             } else {
                 fnClearViewport();
             }
-        };
+        });
+    }
 
-        /* Auto-select first figure */
-        if (listFigures.length > 0) {
-            elSelect.value = listFigures[0];
-            fnDisplayFigure(listFigures[0]);
+    function fnFetchResolvedScene(iSceneIndex, fnCallback) {
+        const sContainerId = PipeleyenApp.fsGetContainerId();
+        fetch("/api/scenes/" + sContainerId + "/" + iSceneIndex)
+            .then(function (response) { return response.json(); })
+            .then(fnCallback)
+            .catch(function () {
+                const dictScript = PipeleyenApp.fdictGetScript();
+                if (dictScript && dictScript.listScenes[iSceneIndex]) {
+                    fnCallback(dictScript.listScenes[iSceneIndex]);
+                }
+            });
+    }
+
+    function fnDisplayFigureByTemplate(sTemplatePath) {
+        const sContainerId = PipeleyenApp.fsGetContainerId();
+        const iSceneIndex = PipeleyenApp.fiGetSelectedSceneIndex();
+        if (!sContainerId || iSceneIndex < 0) return;
+
+        fnFetchResolvedScene(iSceneIndex, function (dictScene) {
+            const listRaw = dictScene.saOutputFiles || [];
+            const listResolved =
+                dictScene.saResolvedOutputFiles || listRaw;
+            var sResolvedPath = sTemplatePath;
+            var iMatch = listRaw.indexOf(sTemplatePath);
+            if (iMatch >= 0 && iMatch < listResolved.length) {
+                sResolvedPath = listResolved[iMatch];
+            }
+            PipeleyenApp.fnShowFigureViewport();
+            fnDisplayFigure(sResolvedPath);
+        });
+    }
+
+    function fnDisplayFileFromContainer(sAbsPath) {
+        PipeleyenApp.fnShowFigureViewport();
+        if (fbIsFigureFile(sAbsPath)) {
+            fnDisplayFigure(sAbsPath);
         } else {
-            fnClearViewport();
+            const elViewport =
+                document.getElementById("figureViewport");
+            elViewport.innerHTML =
+                '<span class="placeholder">Loading file...</span>';
+            const sContainerId = PipeleyenApp.fsGetContainerId();
+            fetch("/api/figure/" + sContainerId + "/" + sAbsPath)
+                .then(function (response) {
+                    if (!response.ok) throw new Error("Not found");
+                    return response.text();
+                })
+                .then(function (sText) {
+                    elViewport.innerHTML =
+                        "<pre style=\"color:var(--text-primary);" +
+                        "padding:14px;overflow:auto;max-height:100%;" +
+                        "white-space:pre-wrap;word-break:break-all;\">" +
+                        fnEscapeHtmlContent(sText) + "</pre>";
+                })
+                .catch(function () {
+                    elViewport.innerHTML =
+                        '<span class="placeholder">' +
+                        "Cannot display this file</span>";
+                });
         }
+    }
+
+    function fnEscapeHtmlContent(sText) {
+        var el = document.createElement("span");
+        el.textContent = sText;
+        return el.innerHTML;
     }
 
     function fnDisplayFigure(sPath) {
@@ -147,5 +217,7 @@ const PipeleyenFigureViewer = (function () {
 
     return {
         fnLoadSceneFigures: fnLoadSceneFigures,
+        fnDisplayFigureByTemplate: fnDisplayFigureByTemplate,
+        fnDisplayFileFromContainer: fnDisplayFileFromContainer,
     };
 })();

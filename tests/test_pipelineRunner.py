@@ -49,7 +49,8 @@ class TestFnRunAllScenes:
             listEvents.append(dictEvent)
 
         iResult = await fnRunAllScenes(
-            mockConnection, "container-id", fnCallback
+            mockConnection, "container-id", "/workspace/GJ1132",
+            fnCallback,
         )
         assert iResult == 0
         mockConnection.ftResultExecuteCommand.assert_called_once()
@@ -78,7 +79,8 @@ class TestFnRunFromScene:
             pass
 
         await fnRunFromScene(
-            mockConnection, "cid", 5, fnCallback
+            mockConnection, "cid", 5, "/workspace/GJ1132",
+            fnCallback,
         )
         sCommand = (
             mockConnection.ftResultExecuteCommand.call_args[0][1]
@@ -99,7 +101,8 @@ class TestFnVerifyOnly:
             pass
 
         await fnVerifyOnly(
-            mockConnection, "cid", fnCallback
+            mockConnection, "cid", "/workspace/GJ1132",
+            fnCallback,
         )
         sCommand = (
             mockConnection.ftResultExecuteCommand.call_args[0][1]

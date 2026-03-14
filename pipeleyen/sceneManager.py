@@ -2,6 +2,8 @@
 
 import json
 import os
+import posixpath
+import re
 
 
 DEFAULT_SEARCH_ROOT = "/workspace"
@@ -56,6 +58,37 @@ def fbValidateScript(dictScript):
             if sField not in dictScene:
                 return False
     return True
+
+
+def fsResolveVariables(sTemplate, dictVariables):
+    """Replace {name} tokens in sTemplate with values from dictVariables."""
+
+    def fnReplace(match):
+        sToken = match.group(1)
+        if sToken in dictVariables:
+            return str(dictVariables[sToken])
+        return match.group(0)
+
+    return re.sub(r"\{([^}]+)\}", fnReplace, sTemplate)
+
+
+def fdictBuildGlobalVariables(dictScript, sScriptPath):
+    """Build the global variable dict from script.json top-level keys."""
+    sScriptDirectory = posixpath.dirname(sScriptPath)
+    return {
+        "sPlotDirectory": dictScript.get("sPlotDirectory", "Plot"),
+        "sRepoRoot": sScriptDirectory,
+        "iNumberOfCores": dictScript.get("iNumberOfCores", -1),
+        "sFigureType": dictScript.get("sFigureType", "pdf").lower(),
+    }
+
+
+def flistResolveOutputFiles(dictScene, dictVariables):
+    """Return output file paths with template variables resolved."""
+    listResolved = []
+    for sPath in dictScene.get("saOutputFiles", []):
+        listResolved.append(fsResolveVariables(sPath, dictVariables))
+    return listResolved
 
 
 def flistExtractSceneNames(dictScript):
