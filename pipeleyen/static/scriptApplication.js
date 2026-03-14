@@ -19,6 +19,8 @@ const PipeleyenApp = (function () {
         fnBindContextMenuEvents();
         fnBindLeftPanelTabs();
         fnBindResizeHandles();
+        fnBindGlobalSettingsToggle();
+        fnBindMoveModalCancel();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
@@ -28,8 +30,8 @@ const PipeleyenApp = (function () {
 
     async function fnLoadContainers() {
         try {
-            const response = await fetch("/api/containers");
-            const listContainers = await response.json();
+            var response = await fetch("/api/containers");
+            var listContainers = await response.json();
             fnRenderContainerList(listContainers);
         } catch (error) {
             document.getElementById("listContainers").innerHTML =
@@ -38,7 +40,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnRenderContainerList(listContainers) {
-        const elList = document.getElementById("listContainers");
+        var elList = document.getElementById("listContainers");
         if (listContainers.length === 0) {
             elList.innerHTML =
                 '<p style="color: var(--text-muted); text-align: center;">' +
@@ -49,15 +51,11 @@ const PipeleyenApp = (function () {
             .map(function (container) {
                 return (
                     '<div class="container-card" data-id="' +
-                    container.sContainerId +
-                    '">' +
+                    container.sContainerId + '">' +
                     '<span class="name">' +
-                    fnEscapeHtml(container.sName) +
-                    "</span>" +
+                    fnEscapeHtml(container.sName) + "</span>" +
                     '<span class="image">' +
-                    fnEscapeHtml(container.sImage) +
-                    "</span>" +
-                    "</div>"
+                    fnEscapeHtml(container.sImage) + "</span></div>"
                 );
             })
             .join("");
@@ -70,10 +68,9 @@ const PipeleyenApp = (function () {
 
     async function fnConnectToContainer(sId) {
         try {
-            const responseScripts = await fetch("/api/scripts/" + sId);
-            const listScripts = await responseScripts.json();
-
-            let sChosenPath = null;
+            var responseScripts = await fetch("/api/scripts/" + sId);
+            var listScripts = await responseScripts.json();
+            var sChosenPath = null;
             if (listScripts.length === 0) {
                 fnShowToast("No script.json found in container", "error");
                 return;
@@ -82,26 +79,24 @@ const PipeleyenApp = (function () {
             } else {
                 sChosenPath = prompt(
                     "Multiple script.json files found:\n\n" +
-                    listScripts
-                        .map(function (s, i) { return (i + 1) + ") " + s; })
-                        .join("\n") +
-                    "\n\nEnter the full path:",
+                    listScripts.map(function (s, i) {
+                        return (i + 1) + ") " + s;
+                    }).join("\n") + "\n\nEnter the full path:",
                     listScripts[0]
                 );
                 if (!sChosenPath) return;
             }
-
-            const response = await fetch(
+            var response = await fetch(
                 "/api/connect/" + sId +
                 "?sScriptPath=" + encodeURIComponent(sChosenPath),
                 { method: "POST" }
             );
             if (!response.ok) {
-                const detail = await response.json();
+                var detail = await response.json();
                 fnShowToast(detail.detail || "Connection failed", "error");
                 return;
             }
-            const data = await response.json();
+            var data = await response.json();
             sContainerId = sId;
             dictScript = data.dictScript;
             sScriptPath = data.sScriptPath;
@@ -135,6 +130,28 @@ const PipeleyenApp = (function () {
         fnLoadContainers();
     }
 
+    /* --- Template Resolution --- */
+
+    function fdictBuildClientVariables() {
+        if (!dictScript) return {};
+        var sScriptDir = fsGetScriptDirectory();
+        return {
+            sPlotDirectory: dictScript.sPlotDirectory || "Plot",
+            sRepoRoot: sScriptDir,
+            iNumberOfCores: dictScript.iNumberOfCores || -1,
+            sFigureType: (dictScript.sFigureType || "pdf").toLowerCase(),
+        };
+    }
+
+    function fsResolveTemplate(sTemplate, dictVariables) {
+        return sTemplate.replace(/\{([^}]+)\}/g, function (sMatch, sToken) {
+            if (dictVariables.hasOwnProperty(sToken)) {
+                return String(dictVariables[sToken]);
+            }
+            return sMatch;
+        });
+    }
+
     /* --- Left Panel Tabs --- */
 
     function fnBindLeftPanelTabs() {
@@ -152,9 +169,7 @@ const PipeleyenApp = (function () {
                     "active", sPanel === "files"
                 );
                 if (sPanel === "files") {
-                    PipeleyenFiles.fnLoadDirectory(
-                        fsGetScriptDirectory()
-                    );
+                    PipeleyenFiles.fnLoadDirectory(fsGetScriptDirectory());
                 }
             });
         });
@@ -166,6 +181,72 @@ const PipeleyenApp = (function () {
         return iLastSlash > 0 ? sScriptPath.substring(0, iLastSlash) : "/workspace";
     }
 
+    /* --- Global Settings --- */
+
+    function fnBindGlobalSettingsToggle() {
+        document.getElementById("btnGlobalSettings").addEventListener(
+            "click", function () {
+                var el = document.getElementById("globalSettingsPanel");
+                var bExpanded = el.classList.toggle("expanded");
+                if (bExpanded) fnRenderGlobalSettings();
+            }
+        );
+    }
+
+    function fnRenderGlobalSettings() {
+        if (!dictScript) return;
+        var el = document.getElementById("globalSettingsPanel");
+        el.innerHTML =
+            '<div class="gs-row">' +
+            '<span class="gs-label">Plot Dir</span>' +
+            '<input class="gs-input" id="gsPlotDirectory" value="' +
+            fnEscapeHtml(dictScript.sPlotDirectory || "Plot") + '">' +
+            '</div>' +
+            '<div class="gs-row">' +
+            '<span class="gs-label">Figure Type</span>' +
+            '<input class="gs-input" id="gsFigureType" value="' +
+            fnEscapeHtml(dictScript.sFigureType || "pdf") + '">' +
+            '</div>' +
+            '<div class="gs-row">' +
+            '<span class="gs-label">Cores</span>' +
+            '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
+            (dictScript.iNumberOfCores || -1) + '">' +
+            '</div>';
+        el.querySelectorAll(".gs-input").forEach(function (inp) {
+            inp.addEventListener("change", fnSaveGlobalSettings);
+        });
+    }
+
+    async function fnSaveGlobalSettings() {
+        var dictUpdates = {
+            sPlotDirectory: document.getElementById("gsPlotDirectory").value,
+            sFigureType: document.getElementById("gsFigureType").value,
+            iNumberOfCores: parseInt(
+                document.getElementById("gsNumberOfCores").value
+            ),
+        };
+        try {
+            var response = await fetch(
+                "/api/settings/" + sContainerId,
+                {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(dictUpdates),
+                }
+            );
+            if (response.ok) {
+                var result = await response.json();
+                dictScript.sPlotDirectory = result.sPlotDirectory;
+                dictScript.sFigureType = result.sFigureType;
+                dictScript.iNumberOfCores = result.iNumberOfCores;
+                fnShowToast("Settings saved", "success");
+                fnRenderSceneList();
+            }
+        } catch (error) {
+            fnShowToast("Failed to save settings", "error");
+        }
+    }
+
     /* --- Scene List --- */
 
     function fnRenderSceneList() {
@@ -174,68 +255,117 @@ const PipeleyenApp = (function () {
             elList.innerHTML = "";
             return;
         }
+        var dictVars = fdictBuildClientVariables();
         var sHtml = "";
         dictScript.listScenes.forEach(function (scene, iIndex) {
-            var sStatusClass = dictSceneStatus[iIndex] || "";
-            var bEnabled = scene.bEnabled !== false;
-            var bSelected = iIndex === iSelectedSceneIndex;
-            var bExpanded = iIndex === iExpandedSceneIndex;
-
-            sHtml +=
-                '<div class="scene-item' +
-                (bSelected ? " selected" : "") +
-                '" data-index="' + iIndex + '" draggable="true">' +
-                '<input type="checkbox" class="scene-checkbox"' +
-                (bEnabled ? " checked" : "") + ">" +
-                '<span class="scene-number">' +
-                String(iIndex + 1).padStart(2, "0") + "</span>" +
-                '<span class="scene-name" title="' +
-                fnEscapeHtml(scene.sName) + '">' +
-                fnEscapeHtml(scene.sName) + "</span>" +
-                '<span class="scene-status ' + sStatusClass + '"></span>' +
-                '<span class="scene-actions">' +
-                '<button class="btn-icon scene-edit" title="Edit">&#9998;</button>' +
-                "</span></div>";
-
-            /* Expandable detail */
-            sHtml += '<div class="scene-detail' +
-                (bExpanded ? " expanded" : "") +
-                '" data-index="' + iIndex + '">';
-            sHtml += '<div class="detail-label">Directory</div>';
-            sHtml += '<div class="detail-field" data-view="field" data-field="sDirectory">' +
-                fnEscapeHtml(scene.sDirectory) + "</div>";
-            sHtml += '<div class="detail-label">Plot Only: ' +
-                (scene.bPlotOnly !== false ? "Yes" : "No") + "</div>";
-
-            if (scene.saSetupCommands && scene.saSetupCommands.length > 0) {
-                sHtml += '<div class="detail-label">Setup Commands</div>';
-                scene.saSetupCommands.forEach(function (sCmd) {
-                    sHtml += '<div class="detail-command" data-view="command">' +
-                        fnEscapeHtml(sCmd) + "</div>";
-                });
-            }
-            if (scene.saCommands && scene.saCommands.length > 0) {
-                sHtml += '<div class="detail-label">Commands</div>';
-                scene.saCommands.forEach(function (sCmd) {
-                    sHtml += '<div class="detail-command" data-view="command">' +
-                        fnEscapeHtml(sCmd) + "</div>";
-                });
-            }
-            if (scene.saOutputFiles && scene.saOutputFiles.length > 0) {
-                sHtml += '<div class="detail-label">Output Files</div>';
-                scene.saOutputFiles.forEach(function (sFile) {
-                    var bIsFigure = fbIsFigureFile(sFile);
-                    sHtml += '<div class="detail-output' +
-                        (bIsFigure ? " figure" : "") +
-                        '" data-view="output" data-path="' +
-                        fnEscapeHtml(sFile) + '">' +
-                        fnEscapeHtml(sFile) + "</div>";
-                });
-            }
-            sHtml += "</div>";
+            sHtml += fsRenderSceneItem(scene, iIndex, dictVars);
         });
         elList.innerHTML = sHtml;
         fnBindSceneEvents();
+    }
+
+    function fsRenderSceneItem(scene, iIndex, dictVars) {
+        var sStatusClass = dictSceneStatus[iIndex] || "";
+        var bEnabled = scene.bEnabled !== false;
+        var bSelected = iIndex === iSelectedSceneIndex;
+        var bExpanded = iIndex === iExpandedSceneIndex;
+
+        var sHtml =
+            '<div class="scene-item' + (bSelected ? " selected" : "") +
+            '" data-index="' + iIndex + '" draggable="true">' +
+            '<input type="checkbox" class="scene-checkbox"' +
+            (bEnabled ? " checked" : "") + ">" +
+            '<span class="scene-number">' +
+            String(iIndex + 1).padStart(2, "0") + "</span>" +
+            '<span class="scene-name" title="' +
+            fnEscapeHtml(scene.sName) + '">' +
+            fnEscapeHtml(scene.sName) + "</span>" +
+            '<span class="scene-status ' + sStatusClass + '"></span>' +
+            '<span class="scene-actions">' +
+            '<button class="btn-icon scene-edit" title="Edit">&#9998;</button>' +
+            "</span></div>";
+
+        sHtml += '<div class="scene-detail' +
+            (bExpanded ? " expanded" : "") +
+            '" data-index="' + iIndex + '">';
+
+        /* Directory */
+        var sResolvedDir = fsResolveTemplate(scene.sDirectory, dictVars);
+        sHtml += '<div class="detail-label">Directory</div>';
+        sHtml += '<div class="detail-field" data-view="field">' +
+            fnEscapeHtml(sResolvedDir) + "</div>";
+        sHtml += '<div class="detail-label">Plot Only: ' +
+            (scene.bPlotOnly !== false ? "Yes" : "No") + "</div>";
+
+        /* Setup Commands */
+        if (scene.saSetupCommands && scene.saSetupCommands.length > 0) {
+            sHtml += '<div class="detail-label">Setup Commands</div>';
+            scene.saSetupCommands.forEach(function (sCmd, iCmdIdx) {
+                sHtml += fsRenderDetailItem(
+                    sCmd, dictVars, "command", "saSetupCommands",
+                    iIndex, iCmdIdx
+                );
+            });
+        }
+
+        /* Commands */
+        if (scene.saCommands && scene.saCommands.length > 0) {
+            sHtml += '<div class="detail-label">Commands</div>';
+            scene.saCommands.forEach(function (sCmd, iCmdIdx) {
+                sHtml += fsRenderDetailItem(
+                    sCmd, dictVars, "command", "saCommands",
+                    iIndex, iCmdIdx
+                );
+            });
+        }
+
+        /* Output Files */
+        if (scene.saOutputFiles && scene.saOutputFiles.length > 0) {
+            sHtml += '<div class="detail-label">Output Files</div>';
+            scene.saOutputFiles.forEach(function (sFile, iFileIdx) {
+                sHtml += fsRenderDetailItem(
+                    sFile, dictVars, "output", "saOutputFiles",
+                    iIndex, iFileIdx
+                );
+            });
+        }
+
+        sHtml += "</div>";
+        return sHtml;
+    }
+
+    function fsRenderDetailItem(
+        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx
+    ) {
+        var sResolved = fsResolveTemplate(sRaw, dictVars);
+        var bIsFigure = sType === "output" && fbIsFigureFile(sResolved);
+        var bDiffers = sResolved !== sRaw;
+
+        var sHtml = '<div class="detail-item ' + sType +
+            '" data-scene="' + iSceneIdx +
+            '" data-array="' + sArrayKey +
+            '" data-idx="' + iItemIdx +
+            '" data-resolved="' + fnEscapeHtml(sResolved) +
+            '" draggable="true">';
+
+        sHtml += '<div class="detail-text' +
+            (bIsFigure ? " figure" : "") + '">' +
+            fnEscapeHtml(sResolved);
+        if (bDiffers) {
+            sHtml += '<span class="detail-resolved">' +
+                fnEscapeHtml(sRaw) + '</span>';
+        }
+        sHtml += '</div>';
+
+        sHtml += '<div class="detail-actions">' +
+            '<button class="action-edit" title="Edit">&#9998;</button>' +
+            '<button class="action-copy" title="Copy">&#9112;</button>' +
+            '<button class="action-move" title="Move to scene">&#8644;</button>' +
+            '<button class="action-delete" title="Delete">&#10005;</button>' +
+            '</div>';
+
+        sHtml += '</div>';
+        return sHtml;
     }
 
     function fbIsFigureFile(sPath) {
@@ -245,8 +375,11 @@ const PipeleyenApp = (function () {
             sLower.endsWith(".svg");
     }
 
+    /* --- Scene Event Binding --- */
+
     function fnBindSceneEvents() {
         var elList = document.getElementById("listScenes");
+
         elList.querySelectorAll(".scene-item").forEach(function (el) {
             var iIndex = parseInt(el.dataset.index);
 
@@ -278,6 +411,7 @@ const PipeleyenApp = (function () {
 
             el.addEventListener("dragstart", function (event) {
                 event.dataTransfer.setData("text/plain", String(iIndex));
+                event.dataTransfer.setData("pipeleyen/scene", String(iIndex));
                 el.classList.add("dragging");
             });
             el.addEventListener("dragend", function () {
@@ -297,30 +431,186 @@ const PipeleyenApp = (function () {
             });
         });
 
-        /* Bind detail item clicks */
-        elList.querySelectorAll("[data-view='output']").forEach(function (el) {
-            el.addEventListener("click", function () {
-                var sPath = el.dataset.path;
-                if (fbIsFigureFile(sPath)) {
-                    PipeleyenFigureViewer.fnDisplayFigureByTemplate(sPath);
+        /* Bind detail item clicks and actions */
+        elList.querySelectorAll(".detail-item").forEach(function (el) {
+            fnBindDetailItemEvents(el);
+        });
+    }
+
+    function fnBindDetailItemEvents(el) {
+        var iScene = parseInt(el.dataset.scene);
+        var sArray = el.dataset.array;
+        var iIdx = parseInt(el.dataset.idx);
+        var sResolved = el.dataset.resolved;
+
+        /* Click on text to view */
+        var elText = el.querySelector(".detail-text");
+        if (elText) {
+            elText.addEventListener("click", function () {
+                if (el.classList.contains("output") && fbIsFigureFile(sResolved)) {
+                    PipeleyenFigureViewer.fnDisplayInNextViewer(sResolved);
                 } else {
-                    fnShowFieldView("Output File", sPath);
+                    PipeleyenFigureViewer.fnDisplayTextInNextViewer(
+                        sArray, sResolved
+                    );
                 }
             });
+        }
+
+        /* Drag detail items to viewer panels */
+        el.addEventListener("dragstart", function (event) {
+            event.stopPropagation();
+            event.dataTransfer.setData("pipeleyen/filepath", sResolved);
         });
 
-        elList.querySelectorAll("[data-view='command']").forEach(function (el) {
-            el.addEventListener("click", function () {
-                fnShowFieldView("Command", el.textContent);
+        /* Action: Edit */
+        var btnEdit = el.querySelector(".action-edit");
+        if (btnEdit) {
+            btnEdit.addEventListener("click", function (event) {
+                event.stopPropagation();
+                fnInlineEditItem(el, iScene, sArray, iIdx);
             });
-        });
+        }
 
-        elList.querySelectorAll("[data-view='field']").forEach(function (el) {
+        /* Action: Copy */
+        var btnCopy = el.querySelector(".action-copy");
+        if (btnCopy) {
+            btnCopy.addEventListener("click", function (event) {
+                event.stopPropagation();
+                navigator.clipboard.writeText(sResolved).then(function () {
+                    fnShowToast("Copied to clipboard", "success");
+                });
+            });
+        }
+
+        /* Action: Move */
+        var btnMove = el.querySelector(".action-move");
+        if (btnMove) {
+            btnMove.addEventListener("click", function (event) {
+                event.stopPropagation();
+                fnShowMoveModal(iScene, sArray, iIdx);
+            });
+        }
+
+        /* Action: Delete */
+        var btnDelete = el.querySelector(".action-delete");
+        if (btnDelete) {
+            btnDelete.addEventListener("click", function (event) {
+                event.stopPropagation();
+                fnDeleteDetailItem(iScene, sArray, iIdx);
+            });
+        }
+    }
+
+    /* --- Detail Item Actions --- */
+
+    function fnInlineEditItem(el, iScene, sArray, iIdx) {
+        var sRaw = dictScript.listScenes[iScene][sArray][iIdx];
+        var elText = el.querySelector(".detail-text");
+        var elActions = el.querySelector(".detail-actions");
+        elActions.style.display = "none";
+
+        var elInput = document.createElement("input");
+        elInput.type = "text";
+        elInput.className = "detail-edit-input";
+        elInput.value = sRaw;
+        elText.style.display = "none";
+        el.insertBefore(elInput, elActions);
+        elInput.focus();
+        elInput.select();
+
+        function fnFinishEdit() {
+            var sNewValue = elInput.value.trim();
+            if (sNewValue && sNewValue !== sRaw) {
+                dictScript.listScenes[iScene][sArray][iIdx] = sNewValue;
+                fnSaveSceneArray(iScene, sArray);
+            }
+            elInput.remove();
+            elText.style.display = "";
+            elActions.style.display = "";
+            fnRenderSceneList();
+        }
+
+        elInput.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") fnFinishEdit();
+            if (event.key === "Escape") {
+                elInput.remove();
+                elText.style.display = "";
+                elActions.style.display = "";
+            }
+        });
+        elInput.addEventListener("blur", fnFinishEdit);
+    }
+
+    async function fnDeleteDetailItem(iScene, sArray, iIdx) {
+        var sValue = dictScript.listScenes[iScene][sArray][iIdx];
+        if (!confirm("Delete this item?\n\n" + sValue)) return;
+        dictScript.listScenes[iScene][sArray].splice(iIdx, 1);
+        await fnSaveSceneArray(iScene, sArray);
+        fnRenderSceneList();
+    }
+
+    function fnShowMoveModal(iSourceScene, sArray, iIdx) {
+        var elList = document.getElementById("moveSceneList");
+        var sHtml = "";
+        dictScript.listScenes.forEach(function (scene, iIndex) {
+            if (iIndex === iSourceScene) return;
+            sHtml += '<div class="move-scene-item" data-target="' +
+                iIndex + '">' +
+                String(iIndex + 1).padStart(2, "0") + ". " +
+                fnEscapeHtml(scene.sName) + "</div>";
+        });
+        elList.innerHTML = sHtml;
+        document.getElementById("modalMoveCommand")
+            .classList.add("active");
+
+        elList.querySelectorAll(".move-scene-item").forEach(function (el) {
             el.addEventListener("click", function () {
-                fnShowFieldView(el.dataset.field, el.textContent);
+                var iTarget = parseInt(el.dataset.target);
+                fnMoveItem(iSourceScene, iTarget, sArray, iIdx);
+                document.getElementById("modalMoveCommand")
+                    .classList.remove("active");
             });
         });
     }
+
+    function fnBindMoveModalCancel() {
+        document.getElementById("btnMoveCancel").addEventListener(
+            "click", function () {
+                document.getElementById("modalMoveCommand")
+                    .classList.remove("active");
+            }
+        );
+    }
+
+    async function fnMoveItem(iSource, iTarget, sArray, iIdx) {
+        var sValue = dictScript.listScenes[iSource][sArray].splice(iIdx, 1)[0];
+        var sTargetArray = sArray;
+        dictScript.listScenes[iTarget][sTargetArray].push(sValue);
+        await fnSaveSceneArray(iSource, sArray);
+        await fnSaveSceneArray(iTarget, sTargetArray);
+        fnRenderSceneList();
+        fnShowToast("Moved to " + dictScript.listScenes[iTarget].sName, "success");
+    }
+
+    async function fnSaveSceneArray(iScene, sArray) {
+        var dictUpdate = {};
+        dictUpdate[sArray] = dictScript.listScenes[iScene][sArray];
+        try {
+            await fetch(
+                "/api/scenes/" + sContainerId + "/" + iScene,
+                {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(dictUpdate),
+                }
+            );
+        } catch (error) {
+            fnShowToast("Save failed", "error");
+        }
+    }
+
+    /* --- Scene Expand/Collapse --- */
 
     function fnToggleSceneExpand(iIndex) {
         if (iExpandedSceneIndex === iIndex) {
@@ -331,21 +621,6 @@ const PipeleyenApp = (function () {
         iSelectedSceneIndex = iIndex;
         fnRenderSceneList();
         PipeleyenFigureViewer.fnLoadSceneFigures(iIndex);
-    }
-
-    function fnShowFieldView(sLabel, sValue) {
-        var elViewport = document.getElementById("figureViewport");
-        var elViewContent = document.getElementById("viewContent");
-        elViewport.style.display = "none";
-        elViewContent.classList.add("active");
-        elViewContent.innerHTML =
-            '<div class="view-title">' + fnEscapeHtml(sLabel) + "</div>" +
-            "<pre>" + fnEscapeHtml(sValue) + "</pre>";
-    }
-
-    function fnShowFigureViewport() {
-        document.getElementById("figureViewport").style.display = "";
-        document.getElementById("viewContent").classList.remove("active");
     }
 
     async function fnToggleSceneEnabled(iIndex, bEnabled) {
@@ -391,7 +666,6 @@ const PipeleyenApp = (function () {
     /* --- Resize Handles --- */
 
     function fnBindResizeHandles() {
-        /* Horizontal: left panel width */
         var elLeft = document.getElementById("panelLeft");
         var elHandleH = elLeft.querySelector(".resize-handle-horizontal");
         if (elHandleH) {
@@ -403,22 +677,30 @@ const PipeleyenApp = (function () {
             });
         }
 
-        /* Vertical: figure/terminal split */
         var elHandleV = document.getElementById("resizeHandleVertical");
         if (elHandleV) {
-            var elFigure = document.getElementById("panelFigure");
+            var elViewerDual = document.getElementById("panelViewerDual");
             fnMakeDraggableVertical(elHandleV, function (iDeltaY) {
-                var iHeight = elFigure.offsetHeight + iDeltaY;
+                var iHeight = elViewerDual.offsetHeight + iDeltaY;
                 iHeight = Math.max(80, iHeight);
-                elFigure.style.flex = "0 0 " + iHeight + "px";
+                elViewerDual.style.flex = "0 0 " + iHeight + "px";
+            });
+        }
+
+        var elHandleViewer = document.getElementById("resizeHandleViewer");
+        if (elHandleViewer) {
+            var elViewerA = document.getElementById("viewerA");
+            fnMakeDraggable(elHandleViewer, function (iDeltaX) {
+                var iWidth = elViewerA.offsetWidth + iDeltaX;
+                iWidth = Math.max(100, iWidth);
+                elViewerA.style.flex = "0 0 " + iWidth + "px";
             });
         }
     }
 
     function fnMakeDraggable(elHandle, fnOnMove) {
-        var iStartX = 0;
         elHandle.addEventListener("mousedown", function (event) {
-            iStartX = event.clientX;
+            var iStartX = event.clientX;
             event.preventDefault();
             function fnMouseMove(e) {
                 var iDelta = e.clientX - iStartX;
@@ -479,8 +761,7 @@ const PipeleyenApp = (function () {
         }
         var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
-        var sUrl =
-            sProtocol + "//" + window.location.host +
+        var sUrl = sProtocol + "//" + window.location.host +
             "/ws/pipeline/" + sContainerId;
         wsPipeline = new WebSocket(sUrl);
         wsPipeline.onmessage = function (event) {
@@ -605,9 +886,7 @@ const PipeleyenApp = (function () {
 
     async function fnDeleteScene(iIndex) {
         var sName = dictScript.listScenes[iIndex].sName;
-        if (!confirm('Delete scene "' + sName + '"?')) {
-            return;
-        }
+        if (!confirm('Delete scene "' + sName + '"?')) return;
         try {
             var response = await fetch(
                 "/api/scenes/" + sContainerId + "/" + iIndex,
@@ -615,12 +894,8 @@ const PipeleyenApp = (function () {
             );
             if (response.ok) {
                 dictScript.listScenes.splice(iIndex, 1);
-                if (iSelectedSceneIndex === iIndex) {
-                    iSelectedSceneIndex = -1;
-                }
-                if (iExpandedSceneIndex === iIndex) {
-                    iExpandedSceneIndex = -1;
-                }
+                if (iSelectedSceneIndex === iIndex) iSelectedSceneIndex = -1;
+                if (iExpandedSceneIndex === iIndex) iExpandedSceneIndex = -1;
                 fnRenderSceneList();
                 fnShowToast("Scene deleted", "success");
             }
@@ -654,12 +929,12 @@ const PipeleyenApp = (function () {
         fnShowToast: fnShowToast,
         fnRenderSceneList: fnRenderSceneList,
         fnEscapeHtml: fnEscapeHtml,
-        fnShowFigureViewport: fnShowFigureViewport,
-        fnShowFieldView: fnShowFieldView,
         fsGetContainerId: function () { return sContainerId; },
         fdictGetScript: function () { return dictScript; },
         fsGetScriptPath: function () { return sScriptPath; },
         fiGetSelectedSceneIndex: function () { return iSelectedSceneIndex; },
+        fdictBuildClientVariables: fdictBuildClientVariables,
+        fsResolveTemplate: fsResolveTemplate,
     };
 })();
 
@@ -717,8 +992,6 @@ var PipeleyenFiles = (function () {
                 '<p style="padding:14px;color:var(--text-muted)">Empty directory</p>';
             return;
         }
-
-        /* Sort: directories first, then files */
         listEntries.sort(function (a, b) {
             if (a.bIsDirectory !== b.bIsDirectory) {
                 return a.bIsDirectory ? -1 : 1;
@@ -736,7 +1009,8 @@ var PipeleyenFiles = (function () {
             }
             return (
                 '<div class="file-item" data-path="' + entry.sPath +
-                '" data-is-dir="' + entry.bIsDirectory + '">' +
+                '" data-is-dir="' + entry.bIsDirectory +
+                '" draggable="true">' +
                 '<span class="file-icon ' + sIconClass + '">' +
                 sIcon + "</span>" +
                 '<span class="file-name">' + entry.sName + "</span>" +
@@ -749,10 +1023,15 @@ var PipeleyenFiles = (function () {
                 if (el.dataset.isDir === "true") {
                     fnLoadDirectory(el.dataset.path);
                 } else {
-                    PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                    PipeleyenFigureViewer.fnDisplayInNextViewer(
                         el.dataset.path
                     );
                 }
+            });
+            el.addEventListener("dragstart", function (event) {
+                event.dataTransfer.setData(
+                    "pipeleyen/filepath", el.dataset.path
+                );
             });
         });
     }

@@ -82,16 +82,22 @@ class DockerConnection:
         bufferTar.seek(0)
         container.put_archive(sDirectory, bufferTar)
 
-    def fdictExecCreate(self, sContainerId, sCommand="/bin/bash"):
+    def fdictExecCreate(
+        self, sContainerId, sCommand="/bin/bash", sUser=None
+    ):
         """Create an interactive exec instance, return exec id."""
         container = self.fcontainerGetById(sContainerId)
+        dictKwargs = {
+            "cmd": sCommand,
+            "tty": True,
+            "stdin": True,
+            "stdout": True,
+            "stderr": True,
+        }
+        if sUser:
+            dictKwargs["user"] = sUser
         sExecId = self._clientDocker.api.exec_create(
-            container.id,
-            sCommand,
-            tty=True,
-            stdin=True,
-            stdout=True,
-            stderr=True,
+            container.id, **dictKwargs
         )["Id"]
         return sExecId
 

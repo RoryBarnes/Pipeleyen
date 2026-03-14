@@ -25,6 +25,8 @@ from .terminalSession import TerminalSession
 
 STATIC_DIRECTORY = os.path.join(os.path.dirname(__file__), "static")
 
+sTerminalUser = None
+
 
 class SceneCreateRequest(BaseModel):
     sName: str
@@ -48,6 +50,12 @@ class SceneUpdateRequest(BaseModel):
 class ReorderRequest(BaseModel):
     iFromIndex: int
     iToIndex: int
+
+
+class ScriptSettingsRequest(BaseModel):
+    sPlotDirectory: Optional[str] = None
+    sFigureType: Optional[str] = None
+    iNumberOfCores: Optional[int] = None
 
 
 class RunRequest(BaseModel):
@@ -170,6 +178,43 @@ def fappCreateApplication():
                 }
             )
         return listEntries
+
+    # --- Script settings ---
+
+    @app.get("/api/settings/{sContainerId}")
+    async def fnGetSettings(sContainerId: str):
+        dictScript = dictScriptCache.get(sContainerId)
+        if not dictScript:
+            raise HTTPException(404, "Not connected to container")
+        return {
+            "sPlotDirectory": dictScript.get("sPlotDirectory", "Plot"),
+            "sFigureType": dictScript.get("sFigureType", "pdf"),
+            "iNumberOfCores": dictScript.get("iNumberOfCores", -1),
+        }
+
+    @app.put("/api/settings/{sContainerId}")
+    async def fnUpdateSettings(
+        sContainerId: str, request: ScriptSettingsRequest
+    ):
+        dictScript = dictScriptCache.get(sContainerId)
+        if not dictScript:
+            raise HTTPException(404, "Not connected to container")
+        dictUpdates = {
+            sKey: value
+            for sKey, value in request.model_dump().items()
+            if value is not None
+        }
+        for sKey, value in dictUpdates.items():
+            dictScript[sKey] = value
+        sceneManager.fnSaveScriptToContainer(
+            connectionDocker, sContainerId, dictScript,
+            fsGetScriptPath(sContainerId),
+        )
+        return {
+            "sPlotDirectory": dictScript.get("sPlotDirectory", "Plot"),
+            "sFigureType": dictScript.get("sFigureType", "pdf"),
+            "iNumberOfCores": dictScript.get("iNumberOfCores", -1),
+        }
 
     # --- Scene routes ---
 
@@ -400,7 +445,9 @@ def fappCreateApplication():
         websocket: WebSocket, sContainerId: str
     ):
         await websocket.accept()
-        session = TerminalSession(connectionDocker, sContainerId)
+        session = TerminalSession(
+            connectionDocker, sContainerId, sUser=sTerminalUser
+        )
         try:
             session.fnStart()
         except Exception as error:

@@ -30,6 +30,11 @@ def fnParseArguments():
         action="store_true",
         help="Do not open browser automatically.",
     )
+    parser.add_argument(
+        "--user",
+        default=None,
+        help="User for terminal sessions (default: container default).",
+    )
     return parser.parse_args()
 
 
@@ -64,6 +69,8 @@ def main():
             daemon=True,
         )
         threadBrowser.start()
+    from pipeleyen import serverApplication
+    serverApplication.sTerminalUser = args.user
     print(f"Pipeleyen running at {sUrl}")
     uvicorn.run(
         "pipeleyen.serverApplication:fappCreateApplication",

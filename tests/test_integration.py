@@ -164,6 +164,35 @@ class TestSceneCrud:
         assert listScenes[2]["sName"] == "Scene Alpha"
 
 
+class TestSettings:
+    def _fnConnect(self, client, sContainerId):
+        client.post(
+            f"/api/connect/{sContainerId}",
+            params={"sScriptPath": "/workspace/GJ1132/script.json"},
+        )
+
+    def test_getSettings(self, client, mockDockerEnv):
+        sId = mockDockerEnv["sContainerId"]
+        self._fnConnect(client, sId)
+        response = client.get(f"/api/settings/{sId}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["sPlotDirectory"] == "Plot"
+        assert data["sFigureType"] == "pdf"
+
+    def test_updateSettings(self, client, mockDockerEnv):
+        sId = mockDockerEnv["sContainerId"]
+        self._fnConnect(client, sId)
+        response = client.put(
+            f"/api/settings/{sId}",
+            json={"sFigureType": "png"},
+        )
+        assert response.status_code == 200
+        assert response.json()["sFigureType"] == "png"
+        response2 = client.get(f"/api/settings/{sId}")
+        assert response2.json()["sFigureType"] == "png"
+
+
 class TestServeIndex:
     def test_servesHtml(self, client):
         response = client.get("/")

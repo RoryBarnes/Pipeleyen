@@ -48,9 +48,12 @@
         <!-- Scenes sub-panel -->
         <div id="panelScenes" class="active">
             <div class="panel-header">
+                <button class="btn-icon" id="btnGlobalSettings"
+                        title="Script settings">&#9881;</button>
                 <button class="btn-icon" id="btnNewScene"
                         title="Create new scene">+</button>
             </div>
+            <div id="globalSettingsPanel" class="global-settings"></div>
             <div id="listScenes"></div>
         </div>
 
@@ -65,22 +68,50 @@
 
     <!-- Right Panels -->
     <div id="panelRight">
-        <!-- Figure / View panel -->
-        <div id="panelFigure">
-            <div class="panel-header">
-                <label>View</label>
-                <select id="selectFigure">
-                    <option value="">Select a figure...</option>
-                </select>
-                <button class="btn-icon" id="btnRefreshFigure"
-                        title="Refresh figure">&#x21bb;</button>
+        <!-- Dual Viewer -->
+        <div id="panelViewerDual">
+            <!-- Viewer A -->
+            <div class="viewer-panel" id="viewerA">
+                <div class="panel-header">
+                    <button class="btn-icon viewer-nav" id="btnBackA"
+                            title="Back" disabled>&#9664;</button>
+                    <button class="btn-icon viewer-nav" id="btnForwardA"
+                            title="Forward" disabled>&#9654;</button>
+                    <select class="viewer-select" id="selectFigureA">
+                        <option value="">Select a figure...</option>
+                    </select>
+                    <button class="btn-icon" id="btnRefreshA"
+                            title="Refresh">&#x21bb;</button>
+                </div>
+                <div class="viewer-viewport" id="viewportA">
+                    <span class="placeholder">
+                        Drop a file here or select a scene
+                    </span>
+                </div>
             </div>
-            <div id="figureViewport">
-                <span class="placeholder">
-                    Select a scene to view its details and figures
-                </span>
+
+            <!-- Viewer resize handle -->
+            <div class="resize-handle-viewer" id="resizeHandleViewer"></div>
+
+            <!-- Viewer B -->
+            <div class="viewer-panel" id="viewerB">
+                <div class="panel-header">
+                    <button class="btn-icon viewer-nav" id="btnBackB"
+                            title="Back" disabled>&#9664;</button>
+                    <button class="btn-icon viewer-nav" id="btnForwardB"
+                            title="Forward" disabled>&#9654;</button>
+                    <select class="viewer-select" id="selectFigureB">
+                        <option value="">Select a figure...</option>
+                    </select>
+                    <button class="btn-icon" id="btnRefreshB"
+                            title="Refresh">&#x21bb;</button>
+                </div>
+                <div class="viewer-viewport" id="viewportB">
+                    <span class="placeholder">
+                        Drop a file here to compare
+                    </span>
+                </div>
             </div>
-            <div id="viewContent"></div>
         </div>
 
         <!-- Resize handle -->
@@ -136,6 +167,17 @@
         <div class="modal-actions">
             <button class="btn" id="btnModalCancel">Cancel</button>
             <button class="btn btn-primary" id="btnModalSave">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Move Command Modal -->
+<div class="modal-overlay" id="modalMoveCommand">
+    <div class="modal modal-small">
+        <h2>Move to Scene</h2>
+        <div id="moveSceneList"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnMoveCancel">Cancel</button>
         </div>
     </div>
 </div>

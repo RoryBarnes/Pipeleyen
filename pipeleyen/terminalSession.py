@@ -12,9 +12,10 @@ def fsGenerateSessionId():
 class TerminalSession:
     """Manages a single interactive exec session in a container."""
 
-    def __init__(self, connectionDocker, sContainerId):
+    def __init__(self, connectionDocker, sContainerId, sUser=None):
         self._connectionDocker = connectionDocker
         self._sContainerId = sContainerId
+        self._sUser = sUser
         self._sSessionId = fsGenerateSessionId()
         self._sExecId = None
         self._socketExec = None
@@ -27,7 +28,7 @@ class TerminalSession:
     def fnStart(self):
         """Create and start the docker exec instance."""
         self._sExecId = self._connectionDocker.fdictExecCreate(
-            self._sContainerId
+            self._sContainerId, sUser=self._sUser
         )
         self._socketExec = (
             self._connectionDocker.fsocketExecStart(self._sExecId)
