@@ -1,4 +1,4 @@
-/* Pipeleyen — Dual figure viewer with history */
+/* Pipeleyen — Dual figure viewer with unified shared history */
 
 const PipeleyenFigureViewer = (function () {
     "use strict";
@@ -7,16 +7,22 @@ const PipeleyenFigureViewer = (function () {
         ".pdf", ".png", ".jpg", ".jpeg", ".svg",
     ]);
 
+    var I_MAX_HISTORY = 100;
+
+    /* Unified shared history: list of {sPath, iViewCount, iLastViewed} */
+    var listHistory = [];
+    var iHistoryCounter = 0;
+
     /* Two viewer states: A and B */
     var dictViewerA = {
         sId: "A",
-        listHistory: [],
-        iHistoryIndex: -1,
+        listNavHistory: [],
+        iNavIndex: -1,
     };
     var dictViewerB = {
         sId: "B",
-        listHistory: [],
-        iHistoryIndex: -1,
+        listNavHistory: [],
+        iNavIndex: -1,
     };
     var sNextViewer = "A";
 
@@ -26,6 +32,89 @@ const PipeleyenFigureViewer = (function () {
         return SET_FIGURE_EXTENSIONS.has(
             sPath.substring(iDot).toLowerCase()
         );
+    }
+
+    /* --- Shared History --- */
+
+    function fnAddToHistory(sPath) {
+        iHistoryCounter++;
+        var dictExisting = null;
+        for (var i = 0; i < listHistory.length; i++) {
+            if (listHistory[i].sPath === sPath) {
+                dictExisting = listHistory[i];
+                break;
+            }
+        }
+        if (dictExisting) {
+            dictExisting.iViewCount++;
+            dictExisting.iLastViewed = iHistoryCounter;
+        } else {
+            listHistory.push({
+                sPath: sPath,
+                iViewCount: 1,
+                iLastViewed: iHistoryCounter,
+            });
+        }
+        fnTrimHistory();
+        fnRefreshHistoryDropdowns();
+    }
+
+    function fnTrimHistory() {
+        if (listHistory.length <= I_MAX_HISTORY) return;
+        listHistory.sort(fdCompareHistoryScore);
+        listHistory = listHistory.slice(0, I_MAX_HISTORY);
+    }
+
+    function fdCompareHistoryScore(a, b) {
+        return fdHistoryScore(b) - fdHistoryScore(a);
+    }
+
+    function fdHistoryScore(dictItem) {
+        var dRecency = dictItem.iLastViewed / Math.max(iHistoryCounter, 1);
+        var dFrequency = Math.log(1 + dictItem.iViewCount) / Math.log(101);
+        return 0.6 * dRecency + 0.4 * dFrequency;
+    }
+
+    function flistGetSortedHistory() {
+        var listSorted = listHistory.slice();
+        listSorted.sort(fdCompareHistoryScore);
+        return listSorted;
+    }
+
+    function fnRefreshHistoryDropdowns() {
+        fnPopulateHistorySelect("selectFigureA", dictViewerA);
+        fnPopulateHistorySelect("selectFigureB", dictViewerB);
+    }
+
+    function fnPopulateHistorySelect(sSelectId, dictViewer) {
+        var elSelect = document.getElementById(sSelectId);
+        if (!elSelect) return;
+        var sCurrentPath = fnGetCurrentPath(dictViewer);
+        elSelect.innerHTML = '<option value="">Select a file...</option>';
+        var listSorted = flistGetSortedHistory();
+        listSorted.forEach(function (dictItem) {
+            var elOption = document.createElement("option");
+            elOption.value = dictItem.sPath;
+            elOption.textContent = dictItem.sPath.split("/").pop();
+            elOption.title = dictItem.sPath;
+            if (dictItem.sPath === sCurrentPath) {
+                elOption.selected = true;
+            }
+            elSelect.appendChild(elOption);
+        });
+        elSelect.onchange = function () {
+            if (elSelect.value) {
+                fnNavigateToPath(dictViewer, elSelect.value);
+            }
+        };
+    }
+
+    function fnGetCurrentPath(dictViewer) {
+        if (dictViewer.iNavIndex >= 0 &&
+            dictViewer.iNavIndex < dictViewer.listNavHistory.length) {
+            return dictViewer.listNavHistory[dictViewer.iNavIndex];
+        }
+        return null;
     }
 
     /* --- Public entry points --- */
@@ -40,9 +129,6 @@ const PipeleyenFigureViewer = (function () {
                 dictScene.saOutputFiles || [];
             var listFigures = listOutputFiles.filter(fbIsFigureFile);
 
-            fnPopulateSelect("selectFigureA", listFigures, dictViewerA);
-            fnPopulateSelect("selectFigureB", listFigures, dictViewerB);
-
             if (listFigures.length > 0) {
                 fnNavigateToPath(dictViewerA, listFigures[0]);
             }
@@ -55,12 +141,8 @@ const PipeleyenFigureViewer = (function () {
         sNextViewer = sNextViewer === "A" ? "B" : "A";
     }
 
-    function fnDisplayTextInNextViewer(sLabel, sText) {
-        var dictViewer = sNextViewer === "A" ? dictViewerA : dictViewerB;
-        var elViewport = fnGetViewport(dictViewer);
-        elViewport.innerHTML =
-            '<pre>' + fnEscapeHtml(sLabel + "\n\n" + sText) + '</pre>';
-        sNextViewer = sNextViewer === "A" ? "B" : "A";
+    function fnDisplayFileFromContainer(sPath) {
+        fnDisplayInNextViewer(sPath);
     }
 
     function fnDisplayFigureByTemplate(sTemplatePath) {
@@ -81,10 +163,6 @@ const PipeleyenFigureViewer = (function () {
         });
     }
 
-    function fnDisplayFileFromContainer(sPath) {
-        fnDisplayInNextViewer(sPath);
-    }
-
     /* --- Internal --- */
 
     function fnFetchResolvedScene(iSceneIndex, fnCallback) {
@@ -100,53 +178,40 @@ const PipeleyenFigureViewer = (function () {
             });
     }
 
-    function fnPopulateSelect(sSelectId, listFigures, dictViewer) {
-        var elSelect = document.getElementById(sSelectId);
-        elSelect.innerHTML = '<option value="">Select a figure...</option>';
-        listFigures.forEach(function (sPath) {
-            var elOption = document.createElement("option");
-            elOption.value = sPath;
-            elOption.textContent = sPath.split("/").pop();
-            elSelect.appendChild(elOption);
-        });
-        elSelect.onchange = function () {
-            if (elSelect.value) {
-                fnNavigateToPath(dictViewer, elSelect.value);
-            }
-        };
-    }
-
     function fnGetViewport(dictViewer) {
         return document.getElementById("viewport" + dictViewer.sId);
     }
 
     function fnNavigateToPath(dictViewer, sPath) {
-        /* Trim forward history */
-        if (dictViewer.iHistoryIndex < dictViewer.listHistory.length - 1) {
-            dictViewer.listHistory = dictViewer.listHistory.slice(
-                0, dictViewer.iHistoryIndex + 1
+        /* Trim forward nav history */
+        if (dictViewer.iNavIndex < dictViewer.listNavHistory.length - 1) {
+            dictViewer.listNavHistory = dictViewer.listNavHistory.slice(
+                0, dictViewer.iNavIndex + 1
             );
         }
-        dictViewer.listHistory.push(sPath);
-        dictViewer.iHistoryIndex = dictViewer.listHistory.length - 1;
+        dictViewer.listNavHistory.push(sPath);
+        dictViewer.iNavIndex = dictViewer.listNavHistory.length - 1;
+        fnAddToHistory(sPath);
         fnDisplayInViewport(dictViewer, sPath);
         fnUpdateNavButtons(dictViewer);
     }
 
     function fnNavigateBack(dictViewer) {
-        if (dictViewer.iHistoryIndex <= 0) return;
-        dictViewer.iHistoryIndex--;
-        var sPath = dictViewer.listHistory[dictViewer.iHistoryIndex];
+        if (dictViewer.iNavIndex <= 0) return;
+        dictViewer.iNavIndex--;
+        var sPath = dictViewer.listNavHistory[dictViewer.iNavIndex];
+        fnAddToHistory(sPath);
         fnDisplayInViewport(dictViewer, sPath);
         fnUpdateNavButtons(dictViewer);
     }
 
     function fnNavigateForward(dictViewer) {
-        if (dictViewer.iHistoryIndex >= dictViewer.listHistory.length - 1) {
+        if (dictViewer.iNavIndex >= dictViewer.listNavHistory.length - 1) {
             return;
         }
-        dictViewer.iHistoryIndex++;
-        var sPath = dictViewer.listHistory[dictViewer.iHistoryIndex];
+        dictViewer.iNavIndex++;
+        var sPath = dictViewer.listNavHistory[dictViewer.iNavIndex];
+        fnAddToHistory(sPath);
         fnDisplayInViewport(dictViewer, sPath);
         fnUpdateNavButtons(dictViewer);
     }
@@ -154,16 +219,18 @@ const PipeleyenFigureViewer = (function () {
     function fnUpdateNavButtons(dictViewer) {
         var sId = dictViewer.sId;
         document.getElementById("btnBack" + sId).disabled =
-            dictViewer.iHistoryIndex <= 0;
+            dictViewer.iNavIndex <= 0;
         document.getElementById("btnForward" + sId).disabled =
-            dictViewer.iHistoryIndex >= dictViewer.listHistory.length - 1;
+            dictViewer.iNavIndex >= dictViewer.listNavHistory.length - 1;
     }
 
     function fnDisplayInViewport(dictViewer, sPath) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
         var sUrl = "/api/figure/" + sContainerId + "/" + sPath;
         var elViewport = fnGetViewport(dictViewer);
-        var sExtension = sPath.substring(sPath.lastIndexOf(".")).toLowerCase();
+        var iDot = sPath.lastIndexOf(".");
+        var sExtension = iDot >= 0 ?
+            sPath.substring(iDot).toLowerCase() : "";
 
         if (sExtension === ".pdf") {
             fnRenderPdf(sUrl, elViewport);
@@ -288,19 +355,19 @@ const PipeleyenFigureViewer = (function () {
 
         document.getElementById("btnRefreshA").addEventListener("click",
             function () {
-                if (dictViewerA.iHistoryIndex >= 0) {
+                if (dictViewerA.iNavIndex >= 0) {
                     fnDisplayInViewport(
                         dictViewerA,
-                        dictViewerA.listHistory[dictViewerA.iHistoryIndex]
+                        dictViewerA.listNavHistory[dictViewerA.iNavIndex]
                     );
                 }
             });
         document.getElementById("btnRefreshB").addEventListener("click",
             function () {
-                if (dictViewerB.iHistoryIndex >= 0) {
+                if (dictViewerB.iNavIndex >= 0) {
                     fnDisplayInViewport(
                         dictViewerB,
-                        dictViewerB.listHistory[dictViewerB.iHistoryIndex]
+                        dictViewerB.listNavHistory[dictViewerB.iNavIndex]
                     );
                 }
             });
@@ -311,6 +378,5 @@ const PipeleyenFigureViewer = (function () {
         fnDisplayFigureByTemplate: fnDisplayFigureByTemplate,
         fnDisplayFileFromContainer: fnDisplayFileFromContainer,
         fnDisplayInNextViewer: fnDisplayInNextViewer,
-        fnDisplayTextInNextViewer: fnDisplayTextInNextViewer,
     };
 })();

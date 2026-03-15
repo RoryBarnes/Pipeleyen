@@ -447,12 +447,8 @@ const PipeleyenApp = (function () {
         var elText = el.querySelector(".detail-text");
         if (elText) {
             elText.addEventListener("click", function () {
-                if (el.classList.contains("output") && fbIsFigureFile(sResolved)) {
+                if (el.classList.contains("output")) {
                     PipeleyenFigureViewer.fnDisplayInNextViewer(sResolved);
-                } else {
-                    PipeleyenFigureViewer.fnDisplayTextInNextViewer(
-                        sArray, sResolved
-                    );
                 }
             });
         }

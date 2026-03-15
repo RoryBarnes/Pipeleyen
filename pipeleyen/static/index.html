@@ -78,7 +78,7 @@
                     <button class="btn-icon viewer-nav" id="btnForwardA"
                             title="Forward" disabled>&#9654;</button>
                     <select class="viewer-select" id="selectFigureA">
-                        <option value="">Select a figure...</option>
+                        <option value="">Select a file...</option>
                     </select>
                     <button class="btn-icon" id="btnRefreshA"
                             title="Refresh">&#x21bb;</button>
@@ -101,7 +101,7 @@
                     <button class="btn-icon viewer-nav" id="btnForwardB"
                             title="Forward" disabled>&#9654;</button>
                     <select class="viewer-select" id="selectFigureB">
-                        <option value="">Select a figure...</option>
+                        <option value="">Select a file...</option>
                     </select>
                     <button class="btn-icon" id="btnRefreshB"
                             title="Refresh">&#x21bb;</button>
@@ -117,12 +117,19 @@
         <!-- Resize handle -->
         <div class="resize-handle-vertical" id="resizeHandleVertical"></div>
 
-        <!-- Terminal -->
-        <div id="panelTerminal">
-            <div id="terminalTabs">
-                <button id="terminalTabAdd" title="New terminal">+</button>
+        <!-- Terminal Strip (up to 3 resizable panes) -->
+        <div id="terminalStrip">
+            <div class="terminal-pane" id="terminalPane0">
+                <div class="terminal-pane-tabs">
+                    <button class="terminal-pane-add" data-pane="0"
+                            title="New tab">+</button>
+                </div>
+                <div class="terminal-pane-container"></div>
             </div>
-            <div id="terminalContainer"></div>
+        </div>
+        <div id="terminalStripToolbar">
+            <button class="btn-icon" id="btnAddTerminalPane"
+                    title="Add terminal pane (max 3)">+ Pane</button>
         </div>
     </div>
 </div>

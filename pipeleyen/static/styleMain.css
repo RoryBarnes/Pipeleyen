@@ -5,7 +5,8 @@
     --color-orange: #e09401;
     --color-pale-blue: #13aed5;
     --color-dark-blue: #1321d8;
-    --color-purple: #9b59b6;
+    --color-purple: #c084fc;
+    --color-label: #b0b0c8;
 
     --bg-primary: #1e1e2e;
     --bg-panel: #282840;
@@ -15,7 +16,7 @@
 
     --text-primary: #e0e0e8;
     --text-secondary: #a0a0b8;
-    --text-muted: #6a6a88;
+    --text-muted: #8080a0;
 
     --border-color: #3a3a58;
     --border-radius: 6px;
@@ -291,7 +292,7 @@ html, body {
 
 .global-settings .gs-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-label);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     width: 100px;
@@ -353,7 +354,7 @@ html, body {
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: rgba(155, 89, 182, 0.2);
+    background: rgba(192, 132, 252, 0.2);
     color: var(--color-purple);
     font-size: 10px;
     font-weight: 700;
@@ -427,8 +428,9 @@ html, body {
 }
 
 .scene-detail .detail-label {
-    color: var(--text-muted);
+    color: var(--color-label);
     font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-top: 6px;
@@ -740,26 +742,83 @@ html, body {
     opacity: 0.5;
 }
 
-/* --- Terminal --- */
+/* --- Terminal Strip --- */
 
-#panelTerminal {
+#terminalStrip {
     display: flex;
-    flex-direction: column;
+    flex: 1;
     overflow: hidden;
     min-height: 100px;
-    flex: 1;
 }
 
-#terminalTabs {
+#terminalStripToolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 8px;
+    height: 26px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.terminal-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-width: 200px;
+}
+
+.terminal-pane + .terminal-pane {
+    border-left: 1px solid var(--border-color);
+}
+
+.resize-handle-terminal {
+    width: 6px;
+    cursor: col-resize;
+    background: var(--border-color);
+    flex-shrink: 0;
+}
+
+.resize-handle-terminal:hover {
+    background: var(--color-pale-blue);
+    opacity: 0.5;
+}
+
+.terminal-pane-tabs {
     display: flex;
     align-items: center;
     padding: 0 8px;
-    height: 34px;
+    height: 30px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border-color);
     gap: 2px;
     flex-shrink: 0;
     overflow-x: auto;
+}
+
+.terminal-pane-add {
+    padding: 2px 8px;
+    font-size: 14px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+}
+
+.terminal-pane-add:hover {
+    color: var(--color-pale-blue);
+}
+
+.terminal-pane-container {
+    flex: 1;
+    position: relative;
+    background: #0d0d1a;
+}
+
+.terminal-pane-container .xterm {
+    height: 100%;
 }
 
 .terminal-tab {
@@ -799,28 +858,6 @@ html, body {
     color: var(--color-red);
 }
 
-#terminalTabAdd {
-    padding: 4px 10px;
-    font-size: 16px;
-    color: var(--text-muted);
-    cursor: pointer;
-    border: none;
-    background: transparent;
-}
-
-#terminalTabAdd:hover {
-    color: var(--color-pale-blue);
-}
-
-#terminalContainer {
-    flex: 1;
-    position: relative;
-    background: #0d0d1a;
-}
-
-#terminalContainer .xterm {
-    height: 100%;
-}
 
 /* --- Modal --- */
 
