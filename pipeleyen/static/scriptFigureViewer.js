@@ -9,7 +9,7 @@ const PipeleyenFigureViewer = (function () {
 
     var I_MAX_HISTORY = 100;
 
-    /* Unified shared history: list of {sPath, iViewCount, iLastViewed} */
+    /* Unified shared history: list of {sPath, sWorkdir, iViewCount, iLastViewed} */
     var listHistory = [];
     var iHistoryCounter = 0;
 
@@ -36,7 +36,7 @@ const PipeleyenFigureViewer = (function () {
 
     /* --- Shared History --- */
 
-    function fnAddToHistory(sPath) {
+    function fnAddToHistory(sPath, sWorkdir) {
         iHistoryCounter++;
         var dictExisting = null;
         for (var i = 0; i < listHistory.length; i++) {
@@ -51,6 +51,7 @@ const PipeleyenFigureViewer = (function () {
         } else {
             listHistory.push({
                 sPath: sPath,
+                sWorkdir: sWorkdir || "",
                 iViewCount: 1,
                 iLastViewed: iHistoryCounter,
             });
@@ -89,7 +90,8 @@ const PipeleyenFigureViewer = (function () {
     function fnPopulateHistorySelect(sSelectId, dictViewer) {
         var elSelect = document.getElementById(sSelectId);
         if (!elSelect) return;
-        var sCurrentPath = fnGetCurrentPath(dictViewer);
+        var dictCurrent = fdictGetCurrentEntry(dictViewer);
+        var sCurrentPath = dictCurrent ? dictCurrent.sPath : null;
         elSelect.innerHTML = '<option value="">Select a file...</option>';
         var listSorted = flistGetSortedHistory();
         listSorted.forEach(function (dictItem) {
@@ -104,12 +106,22 @@ const PipeleyenFigureViewer = (function () {
         });
         elSelect.onchange = function () {
             if (elSelect.value) {
-                fnNavigateToPath(dictViewer, elSelect.value);
+                var sWorkdir = fsGetWorkdirForPath(elSelect.value);
+                fnNavigateToPath(dictViewer, elSelect.value, sWorkdir);
             }
         };
     }
 
-    function fnGetCurrentPath(dictViewer) {
+    function fsGetWorkdirForPath(sPath) {
+        for (var i = 0; i < listHistory.length; i++) {
+            if (listHistory[i].sPath === sPath) {
+                return listHistory[i].sWorkdir;
+            }
+        }
+        return "";
+    }
+
+    function fdictGetCurrentEntry(dictViewer) {
         if (dictViewer.iNavIndex >= 0 &&
             dictViewer.iNavIndex < dictViewer.listNavHistory.length) {
             return dictViewer.listNavHistory[dictViewer.iNavIndex];
@@ -130,19 +142,21 @@ const PipeleyenFigureViewer = (function () {
             var listFigures = listOutputFiles.filter(fbIsFigureFile);
 
             if (listFigures.length > 0) {
-                fnNavigateToPath(dictViewerA, listFigures[0]);
+                fnNavigateToPath(
+                    dictViewerA, listFigures[0], dictScene.sDirectory
+                );
             }
         });
     }
 
-    function fnDisplayInNextViewer(sPath) {
+    function fnDisplayInNextViewer(sPath, sWorkdir) {
         var dictViewer = sNextViewer === "A" ? dictViewerA : dictViewerB;
-        fnNavigateToPath(dictViewer, sPath);
+        fnNavigateToPath(dictViewer, sPath, sWorkdir || "");
         sNextViewer = sNextViewer === "A" ? "B" : "A";
     }
 
     function fnDisplayFileFromContainer(sPath) {
-        fnDisplayInNextViewer(sPath);
+        fnDisplayInNextViewer(sPath, "");
     }
 
     function fnDisplayFigureByTemplate(sTemplatePath) {
@@ -159,7 +173,7 @@ const PipeleyenFigureViewer = (function () {
             if (iMatch >= 0 && iMatch < listResolved.length) {
                 sResolvedPath = listResolved[iMatch];
             }
-            fnDisplayInNextViewer(sResolvedPath);
+            fnDisplayInNextViewer(sResolvedPath, dictScene.sDirectory);
         });
     }
 
@@ -182,26 +196,27 @@ const PipeleyenFigureViewer = (function () {
         return document.getElementById("viewport" + dictViewer.sId);
     }
 
-    function fnNavigateToPath(dictViewer, sPath) {
+    function fnNavigateToPath(dictViewer, sPath, sWorkdir) {
+        var dictEntry = { sPath: sPath, sWorkdir: sWorkdir || "" };
         /* Trim forward nav history */
         if (dictViewer.iNavIndex < dictViewer.listNavHistory.length - 1) {
             dictViewer.listNavHistory = dictViewer.listNavHistory.slice(
                 0, dictViewer.iNavIndex + 1
             );
         }
-        dictViewer.listNavHistory.push(sPath);
+        dictViewer.listNavHistory.push(dictEntry);
         dictViewer.iNavIndex = dictViewer.listNavHistory.length - 1;
-        fnAddToHistory(sPath);
-        fnDisplayInViewport(dictViewer, sPath);
+        fnAddToHistory(sPath, sWorkdir);
+        fnDisplayInViewport(dictViewer, dictEntry);
         fnUpdateNavButtons(dictViewer);
     }
 
     function fnNavigateBack(dictViewer) {
         if (dictViewer.iNavIndex <= 0) return;
         dictViewer.iNavIndex--;
-        var sPath = dictViewer.listNavHistory[dictViewer.iNavIndex];
-        fnAddToHistory(sPath);
-        fnDisplayInViewport(dictViewer, sPath);
+        var dictEntry = dictViewer.listNavHistory[dictViewer.iNavIndex];
+        fnAddToHistory(dictEntry.sPath, dictEntry.sWorkdir);
+        fnDisplayInViewport(dictViewer, dictEntry);
         fnUpdateNavButtons(dictViewer);
     }
 
@@ -210,9 +225,9 @@ const PipeleyenFigureViewer = (function () {
             return;
         }
         dictViewer.iNavIndex++;
-        var sPath = dictViewer.listNavHistory[dictViewer.iNavIndex];
-        fnAddToHistory(sPath);
-        fnDisplayInViewport(dictViewer, sPath);
+        var dictEntry = dictViewer.listNavHistory[dictViewer.iNavIndex];
+        fnAddToHistory(dictEntry.sPath, dictEntry.sWorkdir);
+        fnDisplayInViewport(dictViewer, dictEntry);
         fnUpdateNavButtons(dictViewer);
     }
 
@@ -224,9 +239,14 @@ const PipeleyenFigureViewer = (function () {
             dictViewer.iNavIndex >= dictViewer.listNavHistory.length - 1;
     }
 
-    function fnDisplayInViewport(dictViewer, sPath) {
+    function fnDisplayInViewport(dictViewer, dictEntry) {
         var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sPath = dictEntry.sPath;
+        var sWorkdir = dictEntry.sWorkdir || "";
         var sUrl = "/api/figure/" + sContainerId + "/" + sPath;
+        if (sWorkdir) {
+            sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
+        }
         var elViewport = fnGetViewport(dictViewer);
         var iDot = sPath.lastIndexOf(".");
         var sExtension = iDot >= 0 ?
@@ -333,7 +353,10 @@ const PipeleyenFigureViewer = (function () {
                 elViewport.classList.remove("drag-over");
                 var sPath = event.dataTransfer.getData("pipeleyen/filepath");
                 if (sPath) {
-                    fnNavigateToPath(dictViewer, sPath);
+                    var sWorkdir = event.dataTransfer.getData(
+                        "pipeleyen/workdir"
+                    ) || "";
+                    fnNavigateToPath(dictViewer, sPath, sWorkdir);
                 }
             });
         });
@@ -355,20 +378,16 @@ const PipeleyenFigureViewer = (function () {
 
         document.getElementById("btnRefreshA").addEventListener("click",
             function () {
-                if (dictViewerA.iNavIndex >= 0) {
-                    fnDisplayInViewport(
-                        dictViewerA,
-                        dictViewerA.listNavHistory[dictViewerA.iNavIndex]
-                    );
+                var dictEntry = fdictGetCurrentEntry(dictViewerA);
+                if (dictEntry) {
+                    fnDisplayInViewport(dictViewerA, dictEntry);
                 }
             });
         document.getElementById("btnRefreshB").addEventListener("click",
             function () {
-                if (dictViewerB.iNavIndex >= 0) {
-                    fnDisplayInViewport(
-                        dictViewerB,
-                        dictViewerB.listNavHistory[dictViewerB.iNavIndex]
-                    );
+                var dictEntry = fdictGetCurrentEntry(dictViewerB);
+                if (dictEntry) {
+                    fnDisplayInViewport(dictViewerB, dictEntry);
                 }
             });
     });

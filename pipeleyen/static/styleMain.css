@@ -568,6 +568,45 @@ html, body {
     100% { background: transparent; }
 }
 
+/* Inline add row */
+.inline-add-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 4px 0;
+    padding: 2px 0;
+}
+
+.inline-add-row .detail-edit-input {
+    flex: 1;
+}
+
+.inline-add-confirm,
+.inline-add-cancel {
+    padding: 3px 8px;
+    font-size: 12px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    background: transparent;
+}
+
+.inline-add-confirm {
+    color: #2ecc71;
+}
+
+.inline-add-confirm:hover {
+    background: rgba(46, 204, 113, 0.15);
+}
+
+.inline-add-cancel {
+    color: var(--color-red);
+}
+
+.inline-add-cancel:hover {
+    background: rgba(201, 17, 17, 0.15);
+}
+
 /* Inline edit input */
 .detail-item .detail-edit-input {
     flex: 1;
@@ -668,6 +707,14 @@ html, body {
 
 [draggable="true"]:active {
     cursor: grabbing;
+}
+
+.detail-item[draggable="true"]:active,
+.scene-item.dragging {
+    opacity: 0.7;
+    background: var(--bg-hover);
+    border: 1px dashed var(--color-pale-blue);
+    border-radius: 3px;
 }
 
 /* --- Right panels --- */

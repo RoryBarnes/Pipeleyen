@@ -356,7 +356,9 @@ def fappCreateApplication():
     # --- Figure routes ---
 
     @app.get("/api/figure/{sContainerId}/{sFilePath:path}")
-    async def fnServeFigure(sContainerId: str, sFilePath: str):
+    async def fnServeFigure(
+        sContainerId: str, sFilePath: str, sWorkdir: str = ""
+    ):
         sScriptDirectory = fsGetScriptDirectory(sContainerId)
         if sFilePath.startswith("/"):
             sAbsPath = sFilePath
@@ -366,8 +368,21 @@ def fappCreateApplication():
             baContent = connectionDocker.fbaFetchFile(
                 sContainerId, sAbsPath
             )
-        except Exception as error:
-            raise HTTPException(404, f"Figure not found: {error}")
+        except Exception:
+            if sWorkdir and not sFilePath.startswith("/"):
+                sAbsPath = posixpath.join(
+                    sScriptDirectory, sWorkdir, sFilePath
+                )
+                try:
+                    baContent = connectionDocker.fbaFetchFile(
+                        sContainerId, sAbsPath
+                    )
+                except Exception as error:
+                    raise HTTPException(
+                        404, f"Figure not found: {error}"
+                    )
+            else:
+                raise HTTPException(404, f"Figure not found: {sAbsPath}")
         sMimeType = fsMimeTypeForFile(sAbsPath)
         return Response(content=baContent, media_type=sMimeType)
 

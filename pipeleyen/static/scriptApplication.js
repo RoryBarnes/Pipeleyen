@@ -8,6 +8,8 @@ const PipeleyenApp = (function () {
     let sScriptPath = null;
     let iSelectedSceneIndex = -1;
     let setExpandedScenes = new Set();
+    var listUndoStack = [];
+    var I_MAX_UNDO = 50;
     var SET_BINARY_EXTENSIONS = new Set([
         ".npy", ".npz", ".pkl", ".pickle", ".hdf5", ".h5",
         ".bin", ".dat", ".o", ".so", ".a", ".pyc", ".gz",
@@ -32,6 +34,12 @@ const PipeleyenApp = (function () {
         fnBindGlobalSettingsToggle();
         document.addEventListener("click", function () {
             fnHideContextMenu();
+        });
+        document.addEventListener("keydown", function (event) {
+            if ((event.ctrlKey || event.metaKey) && event.key === "z") {
+                event.preventDefault();
+                fnUndo();
+            }
         });
     }
 
@@ -338,7 +346,7 @@ const PipeleyenApp = (function () {
             scene.saOutputFiles.forEach(function (sFile, iFileIdx) {
                 sHtml += fsRenderDetailItem(
                     sFile, dictVars, "output", "saOutputFiles",
-                    iIndex, iFileIdx
+                    iIndex, iFileIdx, sResolvedDir
                 );
             });
         }
@@ -357,7 +365,8 @@ const PipeleyenApp = (function () {
     }
 
     function fsRenderDetailItem(
-        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx
+        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx,
+        sWorkdir
     ) {
         var sResolved = fsResolveTemplate(sRaw, dictVars);
         var sFileClass = "";
@@ -370,6 +379,7 @@ const PipeleyenApp = (function () {
             '" data-array="' + sArrayKey +
             '" data-idx="' + iItemIdx +
             '" data-resolved="' + fnEscapeHtml(sResolved) +
+            '" data-workdir="' + fnEscapeHtml(sWorkdir || "") +
             '" draggable="true">';
 
         sHtml += '<div class="detail-text' + sFileClass + '">' +
@@ -517,6 +527,7 @@ const PipeleyenApp = (function () {
         var sArray = el.dataset.array;
         var iIdx = parseInt(el.dataset.idx);
         var sResolved = el.dataset.resolved;
+        var sWorkdir = el.dataset.workdir || "";
 
         /* Click on text to view */
         var elText = el.querySelector(".detail-text");
@@ -527,7 +538,7 @@ const PipeleyenApp = (function () {
                         fnShowToast("File cannot be viewed", "error");
                     } else {
                         PipeleyenFigureViewer.fnDisplayInNextViewer(
-                            sResolved
+                            sResolved, sWorkdir
                         );
                     }
                 }
@@ -546,6 +557,7 @@ const PipeleyenApp = (function () {
                 "pipeleyen/detail", JSON.stringify(dictDragData)
             );
             event.dataTransfer.setData("pipeleyen/filepath", sResolved);
+            event.dataTransfer.setData("pipeleyen/workdir", sWorkdir);
         });
 
         /* Action: Edit */
@@ -622,6 +634,13 @@ const PipeleyenApp = (function () {
         var sValue = dictScript.listScenes[iScene][sArray][iIdx];
         if (!confirm("Delete this item?\n\n" + sValue)) return;
         dictScript.listScenes[iScene][sArray].splice(iIdx, 1);
+        fnPushUndo({
+            sAction: "delete",
+            iScene: iScene,
+            sArray: sArray,
+            iIdx: iIdx,
+            sValue: sValue,
+        });
         await fnSaveSceneArray(iScene, sArray);
         fnRenderSceneList();
     }
@@ -641,6 +660,15 @@ const PipeleyenApp = (function () {
             dictScript.listScenes[iTargetScene][sTargetArray] = [];
         }
         dictScript.listScenes[iTargetScene][sTargetArray].unshift(sValue);
+        fnPushUndo({
+            sAction: "move",
+            iScene: iSource,
+            sArray: sArray,
+            iIdx: iIdx,
+            iTargetScene: iTargetScene,
+            iTargetIdx: 0,
+            sValue: sValue,
+        });
         await fnSaveSceneArray(iSource, sArray);
         await fnSaveSceneArray(iTargetScene, sTargetArray);
 
@@ -668,18 +696,115 @@ const PipeleyenApp = (function () {
         }
     }
 
-    async function fnAddNewItem(iScene, sArrayKey) {
+    function fnAddNewItem(iScene, sArrayKey) {
         var sPlaceholder = sArrayKey === "saOutputFiles" ?
-            "Enter file path..." : "Enter command...";
-        var sValue = prompt(sPlaceholder);
-        if (!sValue || !sValue.trim()) return;
+            "File path..." : "Command...";
+        fnShowInlineInput(iScene, sArrayKey, sPlaceholder);
+    }
+
+    function fnShowInlineInput(iScene, sArrayKey, sPlaceholder) {
+        var elSection = document.querySelector(
+            '.section-add[data-scene="' + iScene +
+            '"][data-array="' + sArrayKey + '"]'
+        );
+        if (!elSection) return;
+        var elLabel = elSection.parentElement;
+        var elExisting = elLabel.nextElementSibling;
+        if (elExisting && elExisting.classList.contains("inline-add-row")) {
+            return;
+        }
+
+        var elRow = document.createElement("div");
+        elRow.className = "inline-add-row";
+        elRow.innerHTML =
+            '<input class="detail-edit-input" type="text" placeholder="' +
+            sPlaceholder + '">' +
+            '<button class="inline-add-confirm" title="Add">&#10003;</button>' +
+            '<button class="inline-add-cancel" title="Cancel">&#10005;</button>';
+        elLabel.parentElement.insertBefore(elRow, elLabel.nextSibling);
+
+        var elInput = elRow.querySelector("input");
+        elInput.focus();
+
+        function fnConfirm() {
+            var sValue = elInput.value.trim();
+            if (sValue) {
+                fnCommitNewItem(iScene, sArrayKey, sValue);
+            }
+            elRow.remove();
+        }
+        function fnCancel() {
+            elRow.remove();
+        }
+
+        elRow.querySelector(".inline-add-confirm").addEventListener(
+            "click", fnConfirm
+        );
+        elRow.querySelector(".inline-add-cancel").addEventListener(
+            "click", fnCancel
+        );
+        elInput.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") fnConfirm();
+            if (event.key === "Escape") fnCancel();
+        });
+    }
+
+    async function fnCommitNewItem(iScene, sArrayKey, sValue) {
         if (!dictScript.listScenes[iScene][sArrayKey]) {
             dictScript.listScenes[iScene][sArrayKey] = [];
         }
-        dictScript.listScenes[iScene][sArrayKey].push(sValue.trim());
+        dictScript.listScenes[iScene][sArrayKey].push(sValue);
+        fnPushUndo({
+            sAction: "add",
+            iScene: iScene,
+            sArray: sArrayKey,
+            iIdx: dictScript.listScenes[iScene][sArrayKey].length - 1,
+            sValue: sValue,
+        });
         await fnSaveSceneArray(iScene, sArrayKey);
         fnRenderSceneList();
         fnShowToast("Item added", "success");
+    }
+
+    /* --- Undo Stack --- */
+
+    function fnPushUndo(dictAction) {
+        listUndoStack.push(dictAction);
+        if (listUndoStack.length > I_MAX_UNDO) {
+            listUndoStack.shift();
+        }
+    }
+
+    async function fnUndo() {
+        if (listUndoStack.length === 0) {
+            fnShowToast("Nothing to undo", "error");
+            return;
+        }
+        var dictAction = listUndoStack.pop();
+        if (dictAction.sAction === "add") {
+            dictScript.listScenes[dictAction.iScene][dictAction.sArray]
+                .splice(dictAction.iIdx, 1);
+            await fnSaveSceneArray(dictAction.iScene, dictAction.sArray);
+        } else if (dictAction.sAction === "delete") {
+            dictScript.listScenes[dictAction.iScene][dictAction.sArray]
+                .splice(dictAction.iIdx, 0, dictAction.sValue);
+            await fnSaveSceneArray(dictAction.iScene, dictAction.sArray);
+        } else if (dictAction.sAction === "move") {
+            var sValue = dictScript.listScenes[dictAction.iTargetScene][
+                dictAction.sArray
+            ].splice(dictAction.iTargetIdx, 1)[0];
+            if (!dictScript.listScenes[dictAction.iScene][dictAction.sArray]) {
+                dictScript.listScenes[dictAction.iScene][dictAction.sArray] = [];
+            }
+            dictScript.listScenes[dictAction.iScene][dictAction.sArray]
+                .splice(dictAction.iIdx, 0, sValue);
+            await fnSaveSceneArray(dictAction.iScene, dictAction.sArray);
+            await fnSaveSceneArray(
+                dictAction.iTargetScene, dictAction.sArray
+            );
+        }
+        fnRenderSceneList();
+        fnShowToast("Undone", "success");
     }
 
     async function fnSaveSceneArray(iScene, sArray) {
