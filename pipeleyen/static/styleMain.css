@@ -433,6 +433,9 @@ html, body {
 }
 
 .scene-detail .detail-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     color: var(--color-label);
     font-size: 10px;
     font-weight: 600;
@@ -440,6 +443,23 @@ html, body {
     letter-spacing: 0.5px;
     margin-top: 6px;
     margin-bottom: 2px;
+}
+
+.scene-detail .section-add {
+    padding: 0 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 3px;
+    line-height: 1;
+}
+
+.scene-detail .section-add:hover {
+    color: var(--color-pale-blue);
+    background: rgba(19, 174, 213, 0.15);
 }
 
 /* Detail item with action buttons */
@@ -472,12 +492,23 @@ html, body {
 
 .detail-item.command .detail-text {
     font-family: "SF Mono", "Fira Code", monospace;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(60, 60, 100, 0.35);
+    border: 1px solid rgba(80, 80, 120, 0.3);
     border-radius: 3px;
 }
 
-.detail-item.output .detail-text.figure {
+.detail-item.output .detail-text.file-figure {
     color: var(--color-orange);
+}
+
+.detail-item.output .detail-text.file-text {
+    color: var(--color-pale-blue);
+}
+
+.detail-item.output .detail-text.file-binary {
+    color: var(--text-muted);
+    font-style: italic;
+    cursor: default;
 }
 
 .detail-item .detail-resolved {
@@ -518,6 +549,23 @@ html, body {
 .detail-actions button.action-delete:hover {
     color: var(--color-red);
     background: rgba(201, 17, 17, 0.15);
+}
+
+/* Drop target highlight on scene headers */
+.scene-item.drop-target {
+    background: rgba(19, 174, 213, 0.15);
+    border-left-color: var(--color-pale-blue);
+}
+
+/* Highlight animation for moved items */
+.detail-item.highlight {
+    background: rgba(19, 174, 213, 0.2);
+    animation: highlightFade 2s ease-out;
+}
+
+@keyframes highlightFade {
+    0% { background: rgba(19, 174, 213, 0.35); }
+    100% { background: transparent; }
 }
 
 /* Inline edit input */
@@ -960,20 +1008,6 @@ html, body {
     justify-content: flex-end;
     gap: 10px;
     margin-top: 24px;
-}
-
-/* Move scene list in modal */
-.move-scene-item {
-    padding: 8px 14px;
-    cursor: pointer;
-    font-size: 13px;
-    border-radius: 4px;
-    transition: background var(--transition-speed);
-}
-
-.move-scene-item:hover {
-    background: var(--bg-hover);
-    color: var(--color-pale-blue);
 }
 
 /* --- Toast notifications --- */

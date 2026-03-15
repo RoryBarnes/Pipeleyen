@@ -7,7 +7,17 @@ const PipeleyenApp = (function () {
     let dictScript = null;
     let sScriptPath = null;
     let iSelectedSceneIndex = -1;
-    let iExpandedSceneIndex = -1;
+    let setExpandedScenes = new Set();
+    var SET_BINARY_EXTENSIONS = new Set([
+        ".npy", ".npz", ".pkl", ".pickle", ".hdf5", ".h5",
+        ".bin", ".dat", ".o", ".so", ".a", ".pyc", ".gz",
+        ".zip", ".tar", ".bz2", ".xz",
+    ]);
+    var SET_TEXT_EXTENSIONS = new Set([
+        ".json", ".txt", ".csv", ".tsv", ".log", ".yaml", ".yml",
+        ".xml", ".ini", ".cfg", ".conf", ".md", ".rst", ".in",
+        ".out", ".py", ".c", ".h", ".js", ".css", ".html",
+    ]);
     let wsPipeline = null;
     let dictSceneStatus = {};
 
@@ -20,7 +30,6 @@ const PipeleyenApp = (function () {
         fnBindLeftPanelTabs();
         fnBindResizeHandles();
         fnBindGlobalSettingsToggle();
-        fnBindMoveModalCancel();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
@@ -118,7 +127,7 @@ const PipeleyenApp = (function () {
         dictScript = null;
         sScriptPath = null;
         iSelectedSceneIndex = -1;
-        iExpandedSceneIndex = -1;
+        setExpandedScenes.clear();
         dictSceneStatus = {};
         if (wsPipeline) {
             wsPipeline.close();
@@ -268,7 +277,7 @@ const PipeleyenApp = (function () {
         var sStatusClass = dictSceneStatus[iIndex] || "";
         var bEnabled = scene.bEnabled !== false;
         var bSelected = iIndex === iSelectedSceneIndex;
-        var bExpanded = iIndex === iExpandedSceneIndex;
+        var bExpanded = setExpandedScenes.has(iIndex);
 
         var sHtml =
             '<div class="scene-item' + (bSelected ? " selected" : "") +
@@ -298,8 +307,10 @@ const PipeleyenApp = (function () {
             (scene.bPlotOnly !== false ? "Yes" : "No") + "</div>";
 
         /* Setup Commands */
-        if (scene.saSetupCommands && scene.saSetupCommands.length > 0) {
-            sHtml += '<div class="detail-label">Setup Commands</div>';
+        sHtml += fsRenderSectionLabel(
+            "Setup Commands", iIndex, "saSetupCommands"
+        );
+        if (scene.saSetupCommands) {
             scene.saSetupCommands.forEach(function (sCmd, iCmdIdx) {
                 sHtml += fsRenderDetailItem(
                     sCmd, dictVars, "command", "saSetupCommands",
@@ -309,8 +320,8 @@ const PipeleyenApp = (function () {
         }
 
         /* Commands */
-        if (scene.saCommands && scene.saCommands.length > 0) {
-            sHtml += '<div class="detail-label">Commands</div>';
+        sHtml += fsRenderSectionLabel("Commands", iIndex, "saCommands");
+        if (scene.saCommands) {
             scene.saCommands.forEach(function (sCmd, iCmdIdx) {
                 sHtml += fsRenderDetailItem(
                     sCmd, dictVars, "command", "saCommands",
@@ -320,12 +331,14 @@ const PipeleyenApp = (function () {
         }
 
         /* Output Files */
-        if (scene.saOutputFiles && scene.saOutputFiles.length > 0) {
-            sHtml += '<div class="detail-label">Output Files</div>';
+        sHtml += fsRenderSectionLabel(
+            "Output Files", iIndex, "saOutputFiles"
+        );
+        if (scene.saOutputFiles) {
             scene.saOutputFiles.forEach(function (sFile, iFileIdx) {
                 sHtml += fsRenderDetailItem(
                     sFile, dictVars, "output", "saOutputFiles",
-                    iIndex, iFileIdx, sResolvedDir
+                    iIndex, iFileIdx
                 );
             });
         }
@@ -334,34 +347,38 @@ const PipeleyenApp = (function () {
         return sHtml;
     }
 
+    function fsRenderSectionLabel(sLabel, iSceneIdx, sArrayKey) {
+        return '<div class="detail-label">' +
+            '<span>' + sLabel + '</span>' +
+            '<button class="section-add" data-scene="' + iSceneIdx +
+            '" data-array="' + sArrayKey +
+            '" title="Add item">+</button>' +
+            '</div>';
+    }
+
     function fsRenderDetailItem(
-        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx,
-        sSceneDirectory
+        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx
     ) {
         var sResolved = fsResolveTemplate(sRaw, dictVars);
-        var sFullPath = sResolved;
-        if (sType === "output" && sSceneDirectory &&
-            !sResolved.startsWith("/")) {
-            sFullPath = sSceneDirectory + "/" + sResolved;
+        var sFileClass = "";
+        if (sType === "output") {
+            sFileClass = " " + fsFileTypeClass(sResolved);
         }
-        var bIsFigure = sType === "output" && fbIsFigureFile(sResolved);
 
         var sHtml = '<div class="detail-item ' + sType +
             '" data-scene="' + iSceneIdx +
             '" data-array="' + sArrayKey +
             '" data-idx="' + iItemIdx +
-            '" data-resolved="' + fnEscapeHtml(sFullPath) +
+            '" data-resolved="' + fnEscapeHtml(sResolved) +
             '" draggable="true">';
 
-        sHtml += '<div class="detail-text' +
-            (bIsFigure ? " figure" : "") + '">' +
+        sHtml += '<div class="detail-text' + sFileClass + '">' +
             fnEscapeHtml(sResolved) +
             '</div>';
 
         sHtml += '<div class="detail-actions">' +
             '<button class="action-edit" title="Edit">&#9998;</button>' +
             '<button class="action-copy" title="Copy">&#9112;</button>' +
-            '<button class="action-move" title="Move to scene">&#8644;</button>' +
             '<button class="action-delete" title="Delete">&#10005;</button>' +
             '</div>';
 
@@ -369,11 +386,26 @@ const PipeleyenApp = (function () {
         return sHtml;
     }
 
+    function fsFileTypeClass(sPath) {
+        var iDot = sPath.lastIndexOf(".");
+        if (iDot === -1) return "file-binary";
+        var sExt = sPath.substring(iDot).toLowerCase();
+        if (SET_FIGURE_EXTENSIONS.has(sExt)) return "file-figure";
+        if (SET_TEXT_EXTENSIONS.has(sExt)) return "file-text";
+        if (SET_BINARY_EXTENSIONS.has(sExt)) return "file-binary";
+        return "file-text";
+    }
+
+    var SET_FIGURE_EXTENSIONS = new Set([
+        ".pdf", ".png", ".jpg", ".jpeg", ".svg",
+    ]);
+
     function fbIsFigureFile(sPath) {
-        var sLower = sPath.toLowerCase();
-        return sLower.endsWith(".pdf") || sLower.endsWith(".png") ||
-            sLower.endsWith(".jpg") || sLower.endsWith(".jpeg") ||
-            sLower.endsWith(".svg");
+        var iDot = sPath.lastIndexOf(".");
+        if (iDot === -1) return false;
+        return SET_FIGURE_EXTENSIONS.has(
+            sPath.substring(iDot).toLowerCase()
+        );
     }
 
     /* --- Scene Event Binding --- */
@@ -410,6 +442,7 @@ const PipeleyenApp = (function () {
                 });
             }
 
+            /* Scene header drag: reorder scenes */
             el.addEventListener("dragstart", function (event) {
                 event.dataTransfer.setData("text/plain", String(iIndex));
                 event.dataTransfer.setData("pipeleyen/scene", String(iIndex));
@@ -420,14 +453,27 @@ const PipeleyenApp = (function () {
             });
             el.addEventListener("dragover", function (event) {
                 event.preventDefault();
+                el.classList.add("drop-target");
+            });
+            el.addEventListener("dragleave", function () {
+                el.classList.remove("drop-target");
             });
             el.addEventListener("drop", function (event) {
                 event.preventDefault();
-                var iFromIndex = parseInt(
-                    event.dataTransfer.getData("text/plain")
+                el.classList.remove("drop-target");
+                var sDetailData = event.dataTransfer.getData(
+                    "pipeleyen/detail"
                 );
-                if (iFromIndex !== iIndex) {
-                    fnReorderScene(iFromIndex, iIndex);
+                if (sDetailData) {
+                    fnHandleDetailDrop(sDetailData, iIndex);
+                    return;
+                }
+                var sSceneData = event.dataTransfer.getData("text/plain");
+                if (sSceneData !== "") {
+                    var iFromIndex = parseInt(sSceneData);
+                    if (iFromIndex !== iIndex) {
+                        fnReorderScene(iFromIndex, iIndex);
+                    }
                 }
             });
         });
@@ -435,6 +481,34 @@ const PipeleyenApp = (function () {
         /* Bind detail item clicks and actions */
         elList.querySelectorAll(".detail-item").forEach(function (el) {
             fnBindDetailItemEvents(el);
+        });
+
+        /* Bind section add buttons */
+        elList.querySelectorAll(".section-add").forEach(function (el) {
+            el.addEventListener("click", function (event) {
+                event.stopPropagation();
+                fnAddNewItem(
+                    parseInt(el.dataset.scene), el.dataset.array
+                );
+            });
+        });
+
+        /* Bind drop targets on detail sections */
+        elList.querySelectorAll(".scene-detail").forEach(function (el) {
+            el.addEventListener("dragover", function (event) {
+                event.preventDefault();
+            });
+            el.addEventListener("drop", function (event) {
+                var sDetailData = event.dataTransfer.getData(
+                    "pipeleyen/detail"
+                );
+                if (sDetailData) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    var iTargetScene = parseInt(el.dataset.index);
+                    fnHandleDetailDrop(sDetailData, iTargetScene);
+                }
+            });
         });
     }
 
@@ -449,14 +523,28 @@ const PipeleyenApp = (function () {
         if (elText) {
             elText.addEventListener("click", function () {
                 if (el.classList.contains("output")) {
-                    PipeleyenFigureViewer.fnDisplayInNextViewer(sResolved);
+                    if (elText.classList.contains("file-binary")) {
+                        fnShowToast("File cannot be viewed", "error");
+                    } else {
+                        PipeleyenFigureViewer.fnDisplayInNextViewer(
+                            sResolved
+                        );
+                    }
                 }
             });
         }
 
-        /* Drag detail items to viewer panels */
+        /* Drag detail items — carry source info for cross-scene drops */
         el.addEventListener("dragstart", function (event) {
             event.stopPropagation();
+            var dictDragData = {
+                iScene: iScene,
+                sArray: sArray,
+                iIdx: iIdx,
+            };
+            event.dataTransfer.setData(
+                "pipeleyen/detail", JSON.stringify(dictDragData)
+            );
             event.dataTransfer.setData("pipeleyen/filepath", sResolved);
         });
 
@@ -477,15 +565,6 @@ const PipeleyenApp = (function () {
                 navigator.clipboard.writeText(sResolved).then(function () {
                     fnShowToast("Copied to clipboard", "success");
                 });
-            });
-        }
-
-        /* Action: Move */
-        var btnMove = el.querySelector(".action-move");
-        if (btnMove) {
-            btnMove.addEventListener("click", function (event) {
-                event.stopPropagation();
-                fnShowMoveModal(iScene, sArray, iIdx);
             });
         }
 
@@ -547,47 +626,60 @@ const PipeleyenApp = (function () {
         fnRenderSceneList();
     }
 
-    function fnShowMoveModal(iSourceScene, sArray, iIdx) {
-        var elList = document.getElementById("moveSceneList");
-        var sHtml = "";
-        dictScript.listScenes.forEach(function (scene, iIndex) {
-            if (iIndex === iSourceScene) return;
-            sHtml += '<div class="move-scene-item" data-target="' +
-                iIndex + '">' +
-                String(iIndex + 1).padStart(2, "0") + ". " +
-                fnEscapeHtml(scene.sName) + "</div>";
-        });
-        elList.innerHTML = sHtml;
-        document.getElementById("modalMoveCommand")
-            .classList.add("active");
+    async function fnHandleDetailDrop(sDetailData, iTargetScene) {
+        var dictDrag = JSON.parse(sDetailData);
+        var iSource = dictDrag.iScene;
+        var sArray = dictDrag.sArray;
+        var iIdx = dictDrag.iIdx;
+        if (iSource === iTargetScene) return;
 
-        elList.querySelectorAll(".move-scene-item").forEach(function (el) {
-            el.addEventListener("click", function () {
-                var iTarget = parseInt(el.dataset.target);
-                fnMoveItem(iSourceScene, iTarget, sArray, iIdx);
-                document.getElementById("modalMoveCommand")
-                    .classList.remove("active");
-            });
-        });
-    }
+        var sValue = dictScript.listScenes[iSource][sArray].splice(
+            iIdx, 1
+        )[0];
+        var sTargetArray = sArray;
+        if (!dictScript.listScenes[iTargetScene][sTargetArray]) {
+            dictScript.listScenes[iTargetScene][sTargetArray] = [];
+        }
+        dictScript.listScenes[iTargetScene][sTargetArray].unshift(sValue);
+        await fnSaveSceneArray(iSource, sArray);
+        await fnSaveSceneArray(iTargetScene, sTargetArray);
 
-    function fnBindMoveModalCancel() {
-        document.getElementById("btnMoveCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalMoveCommand")
-                    .classList.remove("active");
-            }
+        /* Expand target and highlight */
+        setExpandedScenes.add(iTargetScene);
+        fnRenderSceneList();
+        fnHighlightItem(iTargetScene, sTargetArray, 0);
+        fnShowToast(
+            "Moved to " + dictScript.listScenes[iTargetScene].sName,
+            "success"
         );
     }
 
-    async function fnMoveItem(iSource, iTarget, sArray, iIdx) {
-        var sValue = dictScript.listScenes[iSource][sArray].splice(iIdx, 1)[0];
-        var sTargetArray = sArray;
-        dictScript.listScenes[iTarget][sTargetArray].push(sValue);
-        await fnSaveSceneArray(iSource, sArray);
-        await fnSaveSceneArray(iTarget, sTargetArray);
+    function fnHighlightItem(iScene, sArray, iIdx) {
+        var elItem = document.querySelector(
+            '.detail-item[data-scene="' + iScene +
+            '"][data-array="' + sArray +
+            '"][data-idx="' + iIdx + '"]'
+        );
+        if (elItem) {
+            elItem.classList.add("highlight");
+            setTimeout(function () {
+                elItem.classList.remove("highlight");
+            }, 2000);
+        }
+    }
+
+    async function fnAddNewItem(iScene, sArrayKey) {
+        var sPlaceholder = sArrayKey === "saOutputFiles" ?
+            "Enter file path..." : "Enter command...";
+        var sValue = prompt(sPlaceholder);
+        if (!sValue || !sValue.trim()) return;
+        if (!dictScript.listScenes[iScene][sArrayKey]) {
+            dictScript.listScenes[iScene][sArrayKey] = [];
+        }
+        dictScript.listScenes[iScene][sArrayKey].push(sValue.trim());
+        await fnSaveSceneArray(iScene, sArrayKey);
         fnRenderSceneList();
-        fnShowToast("Moved to " + dictScript.listScenes[iTarget].sName, "success");
+        fnShowToast("Item added", "success");
     }
 
     async function fnSaveSceneArray(iScene, sArray) {
@@ -610,10 +702,10 @@ const PipeleyenApp = (function () {
     /* --- Scene Expand/Collapse --- */
 
     function fnToggleSceneExpand(iIndex) {
-        if (iExpandedSceneIndex === iIndex) {
-            iExpandedSceneIndex = -1;
+        if (setExpandedScenes.has(iIndex)) {
+            setExpandedScenes.delete(iIndex);
         } else {
-            iExpandedSceneIndex = iIndex;
+            setExpandedScenes.add(iIndex);
         }
         iSelectedSceneIndex = iIndex;
         fnRenderSceneList();
@@ -891,7 +983,7 @@ const PipeleyenApp = (function () {
             if (response.ok) {
                 dictScript.listScenes.splice(iIndex, 1);
                 if (iSelectedSceneIndex === iIndex) iSelectedSceneIndex = -1;
-                if (iExpandedSceneIndex === iIndex) iExpandedSceneIndex = -1;
+                setExpandedScenes.delete(iIndex);
                 fnRenderSceneList();
                 fnShowToast("Scene deleted", "success");
             }
