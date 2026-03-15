@@ -14,10 +14,13 @@ from pipeleyen.sceneManager import (
     flistExtractSceneNames,
     flistFilterFigureFiles,
     flistResolveOutputFiles,
+    flistValidateReferences,
     fnDeleteScene,
     fnInsertScene,
+    fnRenumberAllReferences,
     fnReorderScene,
     fnUpdateScene,
+    fsRemapSceneReferences,
     fsResolveVariables,
 )
 
@@ -167,6 +170,322 @@ class TestFnReorderScene:
     def test_invalidToIndex(self, dictSampleScript):
         with pytest.raises(IndexError):
             fnReorderScene(dictSampleScript, 0, 10)
+
+
+class TestFsRemapSceneReferences:
+    def test_shiftsMatchingReferences(self):
+        sText = "cp {Scene03.data} {Scene05.output}"
+        sResult = fsRemapSceneReferences(
+            sText, lambda i: i + 1 if i >= 3 else i
+        )
+        assert sResult == "cp {Scene04.data} {Scene06.output}"
+
+    def test_leavesUnmatchedReferences(self):
+        sText = "cp {Scene01.data} file.txt"
+        sResult = fsRemapSceneReferences(
+            sText, lambda i: i + 1 if i >= 5 else i
+        )
+        assert sResult == "cp {Scene01.data} file.txt"
+
+    def test_noReferences(self):
+        sText = "python run.py --cores 4"
+        sResult = fsRemapSceneReferences(sText, lambda i: i + 1)
+        assert sResult == "python run.py --cores 4"
+
+    def test_preservesGlobalVariables(self):
+        sText = "{sPlotDirectory}/fig.{sFigureType}"
+        sResult = fsRemapSceneReferences(sText, lambda i: i + 1)
+        assert sResult == "{sPlotDirectory}/fig.{sFigureType}"
+
+
+class TestFnInsertSceneRenumbering:
+    def test_insertShiftsDownstreamReferences(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": ["python a.py"],
+                    "saOutputFiles": ["a.npy"],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [],
+                    "saCommands": ["python b.py"],
+                    "saOutputFiles": ["b.npy"],
+                },
+                {
+                    "sName": "C",
+                    "sDirectory": "c",
+                    "saSetupCommands": [
+                        "cp {Scene02.b} input.npy"
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        dictNew = fdictCreateScene("Inserted", "ins")
+        fnInsertScene(dictScript, 1, dictNew)
+        assert len(dictScript["listScenes"]) == 4
+        assert dictScript["listScenes"][1]["sName"] == "Inserted"
+        sSetupCommand = dictScript["listScenes"][3][
+            "saSetupCommands"
+        ][0]
+        assert "{Scene03.b}" in sSetupCommand
+
+    def test_insertBeforeFirstLeavesLowRefsAlone(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": ["python a.py"],
+                    "saOutputFiles": ["a.npy"],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [],
+                    "saCommands": [
+                        "cp {Scene01.a} input.npy"
+                    ],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        dictNew = fdictCreateScene("Inserted", "ins")
+        fnInsertScene(dictScript, 0, dictNew)
+        sCommand = dictScript["listScenes"][2]["saCommands"][0]
+        assert "{Scene02.a}" in sCommand
+
+
+class TestFnDeleteSceneRenumbering:
+    def test_deleteShiftsDownstreamReferences(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["a.npy"],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["b.npy"],
+                },
+                {
+                    "sName": "C",
+                    "sDirectory": "c",
+                    "saSetupCommands": [
+                        "cp {Scene02.b} input.npy"
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        fnDeleteScene(dictScript, 0)
+        assert len(dictScript["listScenes"]) == 2
+        sSetupCommand = dictScript["listScenes"][1][
+            "saSetupCommands"
+        ][0]
+        assert "{Scene01.b}" in sSetupCommand
+
+
+class TestFnReorderSceneRenumbering:
+    def test_moveForwardRenumbers(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["a.npy"],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["b.npy"],
+                },
+                {
+                    "sName": "C",
+                    "sDirectory": "c",
+                    "saSetupCommands": [
+                        "cp {Scene01.a} input_a.npy",
+                        "cp {Scene02.b} input_b.npy",
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        fnReorderScene(dictScript, 0, 2)
+        assert dictScript["listScenes"][0]["sName"] == "B"
+        assert dictScript["listScenes"][2]["sName"] == "A"
+        listSetup = dictScript["listScenes"][1]["saSetupCommands"]
+        assert "{Scene03.a}" in listSetup[0]
+        assert "{Scene01.b}" in listSetup[1]
+
+    def test_moveBackwardRenumbers(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["a.npy"],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["b.npy"],
+                },
+                {
+                    "sName": "C",
+                    "sDirectory": "c",
+                    "saSetupCommands": [
+                        "cp {Scene01.a} input.npy",
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        fnReorderScene(dictScript, 2, 0)
+        assert dictScript["listScenes"][0]["sName"] == "C"
+        sSetup = dictScript["listScenes"][0]["saSetupCommands"][0]
+        assert "{Scene02.a}" in sSetup
+
+
+class TestFlistValidateReferences:
+    def test_validReferencesReturnEmpty(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["data.npy"],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [
+                        "cp {Scene01.data} input.npy",
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        assert flistValidateReferences(dictScript) == []
+
+    def test_detectsMissingOutputFile(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [
+                        "cp {Scene01.missing} input.npy",
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        listWarnings = flistValidateReferences(dictScript)
+        assert len(listWarnings) == 1
+        assert "no matching output" in listWarnings[0]
+
+    def test_detectsReferenceBeyondLastScene(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [
+                        "cp {Scene99.data} input.npy",
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": [],
+                },
+            ],
+        }
+        listWarnings = flistValidateReferences(dictScript)
+        assert len(listWarnings) == 1
+        assert "beyond the last scene" in listWarnings[0]
+
+    def test_detectsCircularDependency(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [
+                        "cp {Scene02.data} input.npy",
+                    ],
+                    "saCommands": [],
+                    "saOutputFiles": ["a.npy"],
+                },
+                {
+                    "sName": "B",
+                    "sDirectory": "b",
+                    "saSetupCommands": [],
+                    "saCommands": [],
+                    "saOutputFiles": ["data.npy"],
+                },
+            ],
+        }
+        listWarnings = flistValidateReferences(dictScript)
+        assert len(listWarnings) == 1
+        assert "later scene" in listWarnings[0]
+
+    def test_noReferencesReturnEmpty(self):
+        dictScript = {
+            "sPlotDirectory": "Plot",
+            "listScenes": [
+                {
+                    "sName": "A",
+                    "sDirectory": "a",
+                    "saSetupCommands": [],
+                    "saCommands": ["python run.py"],
+                    "saOutputFiles": ["out.pdf"],
+                },
+            ],
+        }
+        assert flistValidateReferences(dictScript) == []
 
 
 class TestFlistFilterFigureFiles:

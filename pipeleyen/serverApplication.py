@@ -225,6 +225,14 @@ def fappCreateApplication():
             raise HTTPException(404, "Not connected to container")
         return sceneManager.flistExtractSceneNames(dictScript)
 
+    @app.get("/api/scenes/{sContainerId}/validate")
+    async def fnValidateReferences(sContainerId: str):
+        dictScript = dictScriptCache.get(sContainerId)
+        if not dictScript:
+            raise HTTPException(404, "Not connected to container")
+        listWarnings = sceneManager.flistValidateReferences(dictScript)
+        return {"listWarnings": listWarnings}
+
     @app.get("/api/scenes/{sContainerId}/{iSceneIndex}")
     async def fnGetScene(sContainerId: str, iSceneIndex: int):
         dictScript = dictScriptCache.get(sContainerId)
@@ -291,7 +299,11 @@ def fappCreateApplication():
             connectionDocker, sContainerId, dictScript,
             fsGetScriptPath(sContainerId),
         )
-        return {"iIndex": iPosition, "dictScene": dictScene}
+        return {
+            "iIndex": iPosition,
+            "dictScene": dictScene,
+            "listScenes": dictScript["listScenes"],
+        }
 
     @app.put("/api/scenes/{sContainerId}/{iSceneIndex}")
     async def fnUpdateScene(
@@ -332,7 +344,10 @@ def fappCreateApplication():
             connectionDocker, sContainerId, dictScript,
             fsGetScriptPath(sContainerId),
         )
-        return {"bSuccess": True}
+        return {
+            "bSuccess": True,
+            "listScenes": dictScript["listScenes"],
+        }
 
     @app.post("/api/scenes/{sContainerId}/reorder")
     async def fnReorderScenes(
@@ -351,7 +366,7 @@ def fappCreateApplication():
             connectionDocker, sContainerId, dictScript,
             fsGetScriptPath(sContainerId),
         )
-        return sceneManager.flistExtractSceneNames(dictScript)
+        return {"listScenes": dictScript["listScenes"]}
 
     # --- Figure routes ---
 

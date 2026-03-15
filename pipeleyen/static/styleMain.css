@@ -484,6 +484,7 @@ html, body {
     word-break: break-all;
     cursor: pointer;
     min-width: 0;
+    user-select: text;
 }
 
 .detail-item .detail-text:hover {
@@ -779,14 +780,9 @@ html, body {
     padding: 16px;
 }
 
-.viewer-viewport img {
-    max-width: 100%;
-    height: auto;
-}
-
+.viewer-viewport img,
 .viewer-viewport canvas {
-    max-width: 100%;
-    height: auto;
+    flex-shrink: 0;
 }
 
 .viewer-viewport .placeholder {
@@ -978,6 +974,15 @@ html, body {
     display: flex;
 }
 
+.modal-overlay.modal-displaced {
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.modal-overlay.modal-displaced .modal {
+    pointer-events: auto;
+}
+
 .modal {
     background: var(--bg-modal);
     border: 1px solid var(--border-color);
@@ -987,6 +992,7 @@ html, body {
     max-height: 80vh;
     overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    position: relative;
 }
 
 .modal.modal-small {
@@ -998,6 +1004,8 @@ html, body {
     font-weight: 600;
     color: var(--color-pale-blue);
     margin-bottom: 20px;
+    cursor: move;
+    user-select: none;
 }
 
 .modal .form-group {

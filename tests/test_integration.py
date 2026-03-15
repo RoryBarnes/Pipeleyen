@@ -159,7 +159,8 @@ class TestSceneCrud:
             json={"iFromIndex": 0, "iToIndex": 2},
         )
         assert response.status_code == 200
-        listScenes = response.json()
+        dictResult = response.json()
+        listScenes = dictResult["listScenes"]
         assert listScenes[0]["sName"] == "Scene Beta"
         assert listScenes[2]["sName"] == "Scene Alpha"
 

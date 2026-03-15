@@ -62,16 +62,19 @@ const PipeleyenSceneEditor = (function () {
     }
 
     function fnShowModal() {
-        document
-            .getElementById("modalSceneEditor")
-            .classList.add("active");
+        var elOverlay = document.getElementById("modalSceneEditor");
+        var elModal = elOverlay.querySelector(".modal");
+        elModal.style.transform = "";
+        elOverlay.classList.remove("modal-displaced");
+        elOverlay.classList.add("active");
         document.getElementById("inputSceneName").focus();
     }
 
     function fnHideModal() {
-        document
-            .getElementById("modalSceneEditor")
-            .classList.remove("active");
+        var elOverlay = document.getElementById("modalSceneEditor");
+        elOverlay.classList.remove("active", "modal-displaced");
+        var elModal = elOverlay.querySelector(".modal");
+        elModal.style.transform = "";
     }
 
     function flistParseTextarea(sElementId) {
@@ -155,13 +158,9 @@ const PipeleyenSceneEditor = (function () {
                 );
                 if (response.ok) {
                     const result = await response.json();
-                    dictScript.listScenes.splice(
-                        iInsertPosition,
-                        0,
-                        result.dictScene
-                    );
+                    dictScript.listScenes = result.listScenes;
                     PipeleyenApp.fnShowToast(
-                        "Scene inserted",
+                        "Scene inserted (references renumbered)",
                         "success"
                     );
                 } else {
@@ -201,6 +200,40 @@ const PipeleyenSceneEditor = (function () {
         }
     }
 
+    function fnBindModalDrag() {
+        var elTitle = document.getElementById("modalTitle");
+        var elModal = elTitle.closest(".modal");
+        var elOverlay = document.getElementById("modalSceneEditor");
+        var iOffsetX = 0;
+        var iOffsetY = 0;
+        var iStartX = 0;
+        var iStartY = 0;
+        var bDragging = false;
+
+        elTitle.addEventListener("mousedown", function (event) {
+            if (event.target.tagName === "INPUT") return;
+            bDragging = true;
+            iStartX = event.clientX - iOffsetX;
+            iStartY = event.clientY - iOffsetY;
+            event.preventDefault();
+        });
+
+        document.addEventListener("mousemove", function (event) {
+            if (!bDragging) return;
+            iOffsetX = event.clientX - iStartX;
+            iOffsetY = event.clientY - iStartY;
+            elModal.style.transform =
+                "translate(" + iOffsetX + "px, " + iOffsetY + "px)";
+            if (!elOverlay.classList.contains("modal-displaced")) {
+                elOverlay.classList.add("modal-displaced");
+            }
+        });
+
+        document.addEventListener("mouseup", function () {
+            bDragging = false;
+        });
+    }
+
     /* Bind modal events */
     document.addEventListener("DOMContentLoaded", function () {
         document
@@ -228,6 +261,8 @@ const PipeleyenSceneEditor = (function () {
                 fnHideModal();
             }
         });
+
+        fnBindModalDrag();
     });
 
     return {

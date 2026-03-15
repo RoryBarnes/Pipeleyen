@@ -652,6 +652,13 @@ const PipeleyenApp = (function () {
         var iIdx = dictDrag.iIdx;
         if (iSource === iTargetScene) return;
 
+        if (!confirm(
+            "WARNING: Moving a command may break dependencies " +
+            "in later scenes.\n\nProceed?"
+        )) {
+            return;
+        }
+
         var sValue = dictScript.listScenes[iSource][sArray].splice(
             iIdx, 1
         )[0];
@@ -679,6 +686,11 @@ const PipeleyenApp = (function () {
         fnShowToast(
             "Moved to " + dictScript.listScenes[iTargetScene].sName,
             "success"
+        );
+
+        alert(
+            "Modifying pipeline. Ensure that all subsequent " +
+            "scenes properly reference the new pipeline."
         );
     }
 
@@ -866,10 +878,13 @@ const PipeleyenApp = (function () {
                 }
             );
             if (response.ok) {
-                var scene = dictScript.listScenes.splice(iFromIndex, 1)[0];
-                dictScript.listScenes.splice(iToIndex, 0, scene);
+                var result = await response.json();
+                dictScript.listScenes = result.listScenes;
                 fnRenderSceneList();
-                fnShowToast("Scene reordered", "success");
+                fnShowToast(
+                    "Scene reordered (references renumbered)",
+                    "success"
+                );
             }
         } catch (error) {
             fnShowToast("Reorder failed", "error");
@@ -960,6 +975,9 @@ const PipeleyenApp = (function () {
         document.getElementById("btnVerify").addEventListener(
             "click", fnVerify
         );
+        document.getElementById("btnValidateReferences").addEventListener(
+            "click", fnValidateReferences
+        );
         document.getElementById("btnVsCode").addEventListener(
             "click", fnOpenVsCode
         );
@@ -1044,6 +1062,29 @@ const PipeleyenApp = (function () {
         fnSendPipelineAction({ sAction: "verify" });
     }
 
+    async function fnValidateReferences() {
+        if (!sContainerId) return;
+        try {
+            var response = await fetch(
+                "/api/scenes/" + sContainerId + "/validate"
+            );
+            var result = await response.json();
+            var listWarnings = result.listWarnings;
+            if (listWarnings.length === 0) {
+                fnShowToast(
+                    "All cross-scene references are valid",
+                    "success"
+                );
+            } else {
+                listWarnings.forEach(function (sWarning) {
+                    fnShowToast(sWarning, "error");
+                });
+            }
+        } catch (error) {
+            fnShowToast("Validation failed: " + error.message, "error");
+        }
+    }
+
     function fnOpenVsCode() {
         var sHexId = sContainerId.replace(/-/g, "");
         var sUri =
@@ -1106,11 +1147,15 @@ const PipeleyenApp = (function () {
                 { method: "DELETE" }
             );
             if (response.ok) {
-                dictScript.listScenes.splice(iIndex, 1);
+                var result = await response.json();
+                dictScript.listScenes = result.listScenes;
                 if (iSelectedSceneIndex === iIndex) iSelectedSceneIndex = -1;
                 setExpandedScenes.delete(iIndex);
                 fnRenderSceneList();
-                fnShowToast("Scene deleted", "success");
+                fnShowToast(
+                    "Scene deleted (references renumbered)",
+                    "success"
+                );
             }
         } catch (error) {
             fnShowToast("Delete failed", "error");

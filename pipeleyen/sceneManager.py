@@ -135,8 +135,40 @@ def fdictGetScene(dictScript, iSceneIndex):
     return dict(dictScript["listScenes"][iSceneIndex])
 
 
+def fsRemapSceneReferences(sText, fnRemap):
+    """Apply fnRemap to all {SceneNN.variable} tokens in sText."""
+
+    def fnReplace(match):
+        iOldNumber = int(match.group(1))
+        sVariable = match.group(2)
+        iNewNumber = fnRemap(iOldNumber)
+        if iNewNumber == iOldNumber:
+            return match.group(0)
+        return "{" + f"Scene{iNewNumber:02d}" + "." + sVariable + "}"
+
+    return re.sub(r"\{Scene(\d+)\.([^}]+)\}", fnReplace, sText)
+
+
+def fnRenumberAllReferences(dictScript, fnRemap):
+    """Update all {SceneNN.*} references in every scene per fnRemap."""
+    for dictScene in dictScript["listScenes"]:
+        for sKey in ("saSetupCommands", "saCommands", "saOutputFiles"):
+            if sKey in dictScene and dictScene[sKey]:
+                dictScene[sKey] = [
+                    fsRemapSceneReferences(sItem, fnRemap)
+                    for sItem in dictScene[sKey]
+                ]
+
+
 def fnInsertScene(dictScript, iPosition, dictScene):
-    """Insert a scene at iPosition in the scene list."""
+    """Insert a scene at iPosition, renumbering downstream references."""
+
+    def fnRemap(iSceneNumber):
+        if iSceneNumber >= iPosition + 1:
+            return iSceneNumber + 1
+        return iSceneNumber
+
+    fnRenumberAllReferences(dictScript, fnRemap)
     dictScript["listScenes"].insert(iPosition, dictScene)
 
 
@@ -150,22 +182,44 @@ def fnUpdateScene(dictScript, iSceneIndex, dictUpdates):
 
 
 def fnDeleteScene(dictScript, iSceneIndex):
-    """Remove scene at iSceneIndex from dictScript."""
+    """Remove scene at iSceneIndex, renumbering references."""
     if iSceneIndex < 0 or iSceneIndex >= len(dictScript["listScenes"]):
         raise IndexError(f"Scene index {iSceneIndex} out of range")
+    iDeletedNumber = iSceneIndex + 1
+
+    def fnRemap(iSceneNumber):
+        if iSceneNumber > iDeletedNumber:
+            return iSceneNumber - 1
+        return iSceneNumber
+
     dictScript["listScenes"].pop(iSceneIndex)
+    fnRenumberAllReferences(dictScript, fnRemap)
 
 
 def fnReorderScene(dictScript, iFromIndex, iToIndex):
-    """Move a scene from iFromIndex to iToIndex."""
+    """Move a scene from iFromIndex to iToIndex, renumbering references."""
     listScenes = dictScript["listScenes"]
     iMaxIndex = len(listScenes) - 1
     if iFromIndex < 0 or iFromIndex > iMaxIndex:
         raise IndexError(f"From index {iFromIndex} out of range")
     if iToIndex < 0 or iToIndex > iMaxIndex:
         raise IndexError(f"To index {iToIndex} out of range")
+    iFromNumber = iFromIndex + 1
+
+    def fnRemap(iSceneNumber):
+        if iSceneNumber == iFromNumber:
+            return iToIndex + 1
+        if iFromIndex < iToIndex:
+            if iFromNumber < iSceneNumber <= iToIndex + 1:
+                return iSceneNumber - 1
+        elif iFromIndex > iToIndex:
+            if iToIndex + 1 <= iSceneNumber < iFromNumber:
+                return iSceneNumber + 1
+        return iSceneNumber
+
     dictScene = listScenes.pop(iFromIndex)
     listScenes.insert(iToIndex, dictScene)
+    fnRenumberAllReferences(dictScript, fnRemap)
 
 
 def fnSaveScriptToContainer(
@@ -178,6 +232,63 @@ def fnSaveScriptToContainer(
     connectionDocker.fnWriteFile(
         sContainerId, sScriptPath, sJson.encode("utf-8")
     )
+
+
+def fsetExtractSceneReferences(sText):
+    """Return all {SceneNN.variable} tokens found in sText as tuples."""
+    return set(re.findall(r"\{Scene(\d+)\.([^}]+)\}", sText))
+
+
+def fdictBuildStemRegistry(dictScript):
+    """Map each SceneNN.stem to the scene that produces it."""
+    dictRegistry = {}
+    for iIndex, dictScene in enumerate(dictScript["listScenes"]):
+        iNumber = iIndex + 1
+        for sOutputFile in dictScene.get("saOutputFiles", []):
+            sBasename = posixpath.basename(sOutputFile)
+            sStem = posixpath.splitext(sBasename)[0]
+            sKey = f"Scene{iNumber:02d}.{sStem}"
+            dictRegistry[sKey] = iNumber
+    return dictRegistry
+
+
+def flistValidateReferences(dictScript):
+    """Return a list of warnings about cross-scene reference problems."""
+    dictRegistry = fdictBuildStemRegistry(dictScript)
+    listWarnings = []
+
+    for iIndex, dictScene in enumerate(dictScript["listScenes"]):
+        iNumber = iIndex + 1
+        sSceneLabel = f"Scene{iNumber:02d}"
+
+        for sKey in ("saSetupCommands", "saCommands"):
+            for sCommand in dictScene.get(sKey, []):
+                for sRefNumber, sRefVariable in fsetExtractSceneReferences(
+                    sCommand
+                ):
+                    iRefNumber = int(sRefNumber)
+                    sRefKey = f"Scene{iRefNumber:02d}.{sRefVariable}"
+
+                    if iRefNumber > len(dictScript["listScenes"]):
+                        listWarnings.append(
+                            f"{sSceneLabel}: reference "
+                            f"{{{sRefKey}}} points beyond the "
+                            f"last scene"
+                        )
+                    elif sRefKey not in dictRegistry:
+                        listWarnings.append(
+                            f"{sSceneLabel}: reference "
+                            f"{{{sRefKey}}} has no matching "
+                            f"output file in Scene{iRefNumber:02d}"
+                        )
+                    elif iRefNumber >= iNumber:
+                        listWarnings.append(
+                            f"{sSceneLabel}: reference "
+                            f"{{{sRefKey}}} points to a later "
+                            f"scene (circular dependency)"
+                        )
+
+    return listWarnings
 
 
 def flistFilterFigureFiles(listOutputPaths):
