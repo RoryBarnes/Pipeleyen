@@ -257,7 +257,12 @@ html, body {
     justify-content: flex-end;
     padding: 8px 14px;
     border-bottom: 1px solid var(--border-color);
-    gap: 4px;
+    gap: 6px;
+}
+
+#panelScenes .panel-header .btn-icon {
+    font-size: 20px;
+    padding: 4px 10px;
 }
 
 #listScenes {

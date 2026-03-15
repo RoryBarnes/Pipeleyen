@@ -325,7 +325,7 @@ const PipeleyenApp = (function () {
             scene.saOutputFiles.forEach(function (sFile, iFileIdx) {
                 sHtml += fsRenderDetailItem(
                     sFile, dictVars, "output", "saOutputFiles",
-                    iIndex, iFileIdx
+                    iIndex, iFileIdx, sResolvedDir
                 );
             });
         }
@@ -335,27 +335,28 @@ const PipeleyenApp = (function () {
     }
 
     function fsRenderDetailItem(
-        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx
+        sRaw, dictVars, sType, sArrayKey, iSceneIdx, iItemIdx,
+        sSceneDirectory
     ) {
         var sResolved = fsResolveTemplate(sRaw, dictVars);
+        var sFullPath = sResolved;
+        if (sType === "output" && sSceneDirectory &&
+            !sResolved.startsWith("/")) {
+            sFullPath = sSceneDirectory + "/" + sResolved;
+        }
         var bIsFigure = sType === "output" && fbIsFigureFile(sResolved);
-        var bDiffers = sResolved !== sRaw;
 
         var sHtml = '<div class="detail-item ' + sType +
             '" data-scene="' + iSceneIdx +
             '" data-array="' + sArrayKey +
             '" data-idx="' + iItemIdx +
-            '" data-resolved="' + fnEscapeHtml(sResolved) +
+            '" data-resolved="' + fnEscapeHtml(sFullPath) +
             '" draggable="true">';
 
         sHtml += '<div class="detail-text' +
             (bIsFigure ? " figure" : "") + '">' +
-            fnEscapeHtml(sResolved);
-        if (bDiffers) {
-            sHtml += '<span class="detail-resolved">' +
-                fnEscapeHtml(sRaw) + '</span>';
-        }
-        sHtml += '</div>';
+            fnEscapeHtml(sResolved) +
+            '</div>';
 
         sHtml += '<div class="detail-actions">' +
             '<button class="action-edit" title="Edit">&#9998;</button>' +
@@ -616,7 +617,6 @@ const PipeleyenApp = (function () {
         }
         iSelectedSceneIndex = iIndex;
         fnRenderSceneList();
-        PipeleyenFigureViewer.fnLoadSceneFigures(iIndex);
     }
 
     async function fnToggleSceneEnabled(iIndex, bEnabled) {
